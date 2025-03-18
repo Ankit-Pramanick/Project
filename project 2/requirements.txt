@@ -1,8 +1,0 @@
-Flask
-google-generativeai
-PyPDF2
-python-docx
-werkzeug
-gunicorn
-
-

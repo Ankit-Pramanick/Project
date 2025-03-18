@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Resume Test Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto py-8 px-4 max-w-4xl">
+        <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+            <h1 class="text-3xl font-bold text-center text-primary-700 mb-6">AI Resume-Based Test Generator</h1>
+            
+            <div class="flex flex-col sm:flex-row items-center gap-4 mb-6">
+                <label for="resumeFile" class="flex-1 w-full">
+                    <div id="uploadArea" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-primary-500 transition-colors">
+                        <div class="mb-2 text-primary-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                        </div>
+                        <p class="text-gray-600 mb-1">Upload your resume</p>
+                        <p class="text-xs text-gray-500">Supported formats: PDF, DOCX</p>
+                        <div id="selectedFile" class="mt-3 text-primary-600 font-medium hidden"></div>
+                        <input type="file" id="resumeFile" accept=".pdf,.docx" class="hidden">
+                    </div>
+                </label>
+                <button id="uploadButton" class="bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-6 rounded-lg transition-colors shadow-md hover:shadow-lg w-full sm:w-auto">
+                    Generate Test
+                </button>
+            </div>
+            
+            <div id="loading" class="hidden">
+                <div class="flex justify-center items-center py-8">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-700"></div>
+                </div>
+                <p class="text-center text-gray-600">Analyzing resume and generating test questions...</p>
+            </div>
+            
+            <div id="skills" class="mb-8"></div>
+            
+            <div id="test" class="mb-8"></div>
+            
+            <div id="submit-section" class="hidden text-center">
+                <button id="submit-test" class="bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-8 rounded-lg transition-colors shadow-md hover:shadow-lg">
+                    Submit Test
+                </button>
+            </div>
+            
+            <div id="results" class="hidden"></div>
+        </div>
+    </div>
+    
+    <!-- Warning Modal -->
+    <div id="warningModal" class="fixed inset-0 flex items-center justify-center z-50 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-50"></div>
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full z-10">
+            <div class="flex items-center justify-center text-red-500 mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <h3 class="text-xl font-bold text-center mb-2">Security Warning</h3>
+            <p id="warningMessage" class="text-center mb-4">Unauthorized action detected. Please remain in the test window.</p>
+            <p class="text-center text-red-500 font-medium mb-4">
+                Warning <span id="warningCount">1</span> of 3
+            </p>
+            <div class="flex justify-center">
+                <button onclick="closeWarningModal()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
+                    Return to Test
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Test Canceled Modal -->
+    <div id="canceledModal" class="fixed inset-0 flex items-center justify-center z-50 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-50"></div>
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full z-10">
+            <div class="flex items-center justify-center text-red-500 mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </div>
+            <h3 class="text-xl font-bold text-center mb-2">Test Canceled</h3>
+            <p class="text-center mb-6">Your test has been canceled due to multiple security violations.</p>
+            <div class="flex justify-center">
+                <button onclick="resetTest()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg">
+                    Return to Start
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Store questions and answers globally
+        let testQuestions = [];
+        let correctAnswers = [];
+        let testInProgress = false;
+        let warningCount = 0;
+        let originalTitle = document.title;
+        let hasFocus = true;
+        let visibilityInterval;
+        let timerInterval;
+        let timeRemaining = 600; // 10 minutes in seconds
+
+        // Format time as MM:SS
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
+
+        // Start the timer
+        function startTimer() {
+            // Convert upload button to timer display
+            const uploadButton = document.getElementById('uploadButton');
+            uploadButton.className = "bg-primary-600 text-white font-medium py-3 px-6 rounded-lg shadow-md w-full sm:w-auto";
+            uploadButton.innerHTML = `Time Remaining: <span id="timer-display">${formatTime(timeRemaining)}</span>`;
+            uploadButton.disabled = true;
+            
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                document.getElementById('timer-display').textContent = formatTime(timeRemaining);
+                
+                // Change color when less than 1 minute remains
+                if (timeRemaining <= 60) {
+                    uploadButton.classList.remove('bg-primary-600');
+                    uploadButton.classList.add('bg-red-600');
+                }
+                
+                // Auto-submit when time is up
+                if (timeRemaining <= 0) {
+                    stopTimer();
+                    submitTest();
+                }
+            }, 1000);
+        }
+
+        // Stop the timer
+        function stopTimer() {
+            clearInterval(timerInterval);
+        }
+
+        // Show selected filename
+        function updateFileName() {
+            const fileInput = document.getElementById('resumeFile');
+            const selectedFileElement = document.getElementById('selectedFile');
+            const uploadArea = document.getElementById('uploadArea');
+            
+            if (fileInput.files.length > 0) {
+                // Change the upload area styling to show selection
+                uploadArea.classList.add('border-primary-500');
+                uploadArea.classList.add('bg-primary-50');
+                
+                // Display the filename
+                selectedFileElement.textContent = fileInput.files[0].name;
+                selectedFileElement.classList.remove('hidden');
+                
+                // Change the upload icon to a check mark
+                const iconContainer = uploadArea.querySelector('svg').parentElement;
+                iconContainer.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                `;
+            } else {
+                // Reset to default state
+                uploadArea.classList.remove('border-primary-500');
+                uploadArea.classList.remove('bg-primary-50');
+                selectedFileElement.classList.add('hidden');
+            }
+        }
+
+        // Setup security measures when test is started
+        function setupSecurityMeasures() {
+            testInProgress = true;
+            warningCount = 0;
+            
+            // Disable right-click
+            document.addEventListener('contextmenu', preventDefaultAction);
+            
+            // Disable copy
+            document.addEventListener('copy', preventDefaultAction);
+            document.addEventListener('cut', preventDefaultAction);
+            
+            // Disable selection
+            document.addEventListener('selectstart', preventDefaultAction);
+            
+            // Track window focus
+            window.addEventListener('blur', windowBlurred);
+            window.addEventListener('focus', windowFocused);
+            
+            // Track visibility changes
+            document.addEventListener('visibilitychange', visibilityChanged);
+            
+            // Monitor for rapid tab switching
+            visibilityInterval = setInterval(checkVisibilityState, 500);
+            
+            // Prevent keyboard shortcuts
+            document.addEventListener('keydown', preventKeyboardShortcuts);
+        }
+        
+        // Remove security measures when test completes
+        function removeSecurityMeasures() {
+            testInProgress = false;
+            
+            // Remove event listeners
+            document.removeEventListener('contextmenu', preventDefaultAction);
+            document.removeEventListener('copy', preventDefaultAction);
+            document.removeEventListener('cut', preventDefaultAction);
+            document.removeEventListener('selectstart', preventDefaultAction);
+            window.removeEventListener('blur', windowBlurred);
+            window.removeEventListener('focus', windowFocused);
+            document.removeEventListener('visibilitychange', visibilityChanged);
+            document.removeEventListener('keydown', preventKeyboardShortcuts);
+            
+            // Clear interval
+            clearInterval(visibilityInterval);
+            
+            // Reset title
+            document.title = originalTitle;
+        }
+        
+        // Event handlers
+        function preventDefaultAction(e) {
+            if (testInProgress) {
+                e.preventDefault();
+                showWarning("Copying or right-clicking is not allowed during the test.");
+            }
+        }
+        
+        function windowBlurred() {
+            if (testInProgress) {
+                hasFocus = false;
+                document.title = "⚠️ RETURN TO TEST IMMEDIATELY ⚠️";
+                showWarning("Leaving the test window is not allowed.");
+            }
+        }
+        
+        function windowFocused() {
+            if (testInProgress) {
+                hasFocus = true;
+                document.title = originalTitle;
+            }
+        }
+        
+        function visibilityChanged() {
+            if (testInProgress && document.visibilityState === 'hidden') {
+                showWarning("Switching tabs or minimizing the window is not allowed.");
+            }
+        }
+        
+        function checkVisibilityState() {
+            if (testInProgress && !hasFocus) {
+                document.title = "⚠️ RETURN TO TEST IMMEDIATELY ⚠️";
+            }
+        }
+        
+        function preventKeyboardShortcuts(e) {
+            if (testInProgress) {
+                // Prevent common shortcuts (Ctrl+C, Ctrl+V, Ctrl+P, etc.)
+                if ((e.ctrlKey || e.metaKey) && 
+                    (e.key === 'c' || e.key === 'v' || e.key === 'p' || 
+                     e.key === 'a' || e.key === 's' || e.key === 'u' || 
+                     e.key === 'f' || e.key === 'g' || e.key === 'j' || 
+                     e.key === 'l' || e.key === 'n' || e.key === 'o' || 
+                     e.key === 'i' || e.key === 'k' || e.key === 'r' || 
+                     e.key === 'e' || e.keyCode === 123)) { // F12
+                    e.preventDefault();
+                    showWarning("Keyboard shortcuts are not allowed during the test.");
+                }
+                
+                // Prevent Alt+Tab
+                if (e.altKey && e.key === 'Tab') {
+                    e.preventDefault();
+                    showWarning("Switching windows is not allowed during the test.");
+                }
+
+                // Prevent to open devtools
+                if (e.key === 'F12') {
+                    e.preventDefault();
+                    showWarning("Developer tools are not allowed during the test.");
+                }
+                
+                // Prevent PrintScreen
+                if (e.key === 'PrintScreen') {
+                    e.preventDefault();
+                    showWarning("Screenshots are not allowed during the test.");
+                }
+            }
+        }
+        
+        // Show warning modal
+        function showWarning(message) {
+            if (!testInProgress) return;
+            
+            warningCount++;
+            document.getElementById('warningMessage').textContent = message;
+            document.getElementById('warningCount').textContent = warningCount;
+            document.getElementById('warningModal').classList.remove('hidden');
+            
+            if (warningCount >= 3) {
+                cancelTest();
+            }
+        }
+        
+        // Close warning modal
+        function closeWarningModal() {
+            document.getElementById('warningModal').classList.add('hidden');
+        }
+        
+        // Cancel test
+        function cancelTest() {
+            closeWarningModal();
+            document.getElementById('canceledModal').classList.remove('hidden');
+            removeSecurityMeasures();
+            stopTimer();
+        }
+        
+        // Reset test
+        function resetTest() {
+            document.getElementById('canceledModal').classList.add('hidden');
+            document.getElementById('test').innerHTML = "";
+            document.getElementById('submit-section').classList.add('hidden');
+            document.getElementById('results').classList.add('hidden');
+            document.getElementById('skills').innerHTML = "";
+            
+            // Reset file upload area
+            resetFileUpload();
+            
+            // Reset the upload button
+            const uploadButton = document.getElementById('uploadButton');
+            uploadButton.className = "bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-6 rounded-lg transition-colors shadow-md hover:shadow-lg w-full sm:w-auto";
+            uploadButton.innerHTML = "Generate Test";
+            uploadButton.disabled = false;
+        }
+        
+        // Reset file upload area
+        function resetFileUpload() {
+            const fileInput = document.getElementById('resumeFile');
+            const selectedFileElement = document.getElementById('selectedFile');
+            const uploadArea = document.getElementById('uploadArea');
+            
+            // Clear file input
+            fileInput.value = '';
+            
+            // Reset upload area styling
+            uploadArea.classList.remove('border-primary-500');
+            uploadArea.classList.remove('bg-primary-50');
+            
+            // Hide selected file text
+            selectedFileElement.classList.add('hidden');
+            
+            // Reset icon
+            const iconContainer = uploadArea.querySelector('svg').parentElement;
+            iconContainer.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+            `;
+        }
+
+        async function uploadResume() {
+            const fileInput = document.getElementById('resumeFile');
+            if (fileInput.files.length === 0) {
+                alert("Please select a file to upload.");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+
+            document.getElementById("loading").classList.remove("hidden");
+            document.getElementById("skills").innerHTML = "";
+            document.getElementById("test").innerHTML = "";
+            document.getElementById("submit-section").classList.add("hidden");
+            document.getElementById("results").classList.add("hidden");
+
+            try {
+                const response = await fetch("/upload_resume", {
+                    method: "POST",
+                    body: formData
+                });
+                const result = await response.json();
+                document.getElementById("loading").classList.add("hidden");
+                
+                if (response.ok) {
+                    // Display skills
+                    let skillsHtml = `
+                        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <h3 class="text-xl font-semibold text-gray-800 mb-2">Extracted Skills</h3>
+                            <div class="flex flex-wrap gap-2">
+                    `;
+                    
+                    result.skills.forEach(skill => {
+                        skillsHtml += `<span class="bg-primary-100 text-primary-800 text-sm font-medium px-3 py-1 rounded-full">${skill}</span>`;
+                    });
+                    
+                    skillsHtml += `
+                            </div>
+                        </div>
+                    `;
+                    document.getElementById("skills").innerHTML = skillsHtml;
+                    
+                    // Store test questions and correct answers
+                    testQuestions = result.test;
+                    correctAnswers = result.answers;
+                    
+                    // Generate test HTML
+                    let testHtml = `
+                        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                    </svg>
+                                </div>
+                                <div class="ml-3">
+                                    <p class="text-sm text-yellow-700">
+                                        <strong>Important:</strong> During the test, please remain in this window. Copying content, right-clicking, or switching tabs will result in warnings. After 3 warnings, your test will be canceled. You have 10 minutes to complete the assessment.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Technical Assessment</h3>
+                    `;
+                    
+                    testQuestions.forEach((q, index) => {
+                        testHtml += `
+                            <div class="mb-8 p-5 bg-white border border-gray-200 rounded-lg shadow-sm">
+                                <p class="font-semibold text-gray-800 mb-3">Q${index + 1}: ${q.question}</p>
+                                <div class="space-y-2 pl-1">
+                        `;
+                        
+                        q.options.forEach((opt, optIndex) => {
+                            testHtml += `
+                                <div class="flex items-center">
+                                    <input type="radio" id="q${index}_opt${optIndex}" name="q${index}" value="${optIndex}"
+                                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300">
+                                    <label for="q${index}_opt${optIndex}" class="ml-2 text-gray-700">${opt}</label>
+                                </div>
+                            `;
+                        });
+                        
+                        testHtml += `
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    document.getElementById("test").innerHTML = testHtml;
+                    document.getElementById("submit-section").classList.remove("hidden");
+                    
+                    // Start security monitoring and timer
+                    timeRemaining = 600; // 10 minutes in seconds
+                    setupSecurityMeasures();
+                    startTimer();
+                } else {
+                    alert("Failed to process resume. Please try again.");
+                }
+            } catch (error) {
+                console.error("Error uploading file:", error);
+                alert("An error occurred. Please try again.");
+                document.getElementById("loading").classList.add("hidden");
+            }
+        }
+
+        function submitTest() {
+            // Stop the timer
+            stopTimer();
+            
+            // Check if all questions are answered
+            const totalQuestions = testQuestions.length;
+            let answeredQuestions = 0;
+            let score = 0;
+
+            for (let i = 0; i < totalQuestions; i++) {
+                const selectedOption = document.querySelector(`input[name="q${i}"]:checked`);
+                if (selectedOption) {
+                    answeredQuestions++;
+                    
+                    // Check if answer is correct
+                    const selectedIndex = parseInt(selectedOption.value);
+                    if (correctAnswers[i] === selectedIndex) {
+                        score++;
+                    }
+                }
+            }
+
+            if (answeredQuestions < totalQuestions && timeRemaining > 0) {
+                const unanswered = totalQuestions - answeredQuestions;
+                if (!confirm(`You have ${unanswered} unanswered question(s). Do you want to submit anyway?`)) {
+                    // Restart the timer if they cancel submission
+                    startTimer();
+                    return;
+                }
+            }
+
+            // Calculate percentage
+            const percentage = Math.round((score / totalQuestions) * 100);
+            
+            // Get color based on score
+            let scoreColor = "bg-red-500";
+            if (percentage >= 90) {
+                scoreColor = "bg-green-500";
+            } else if (percentage >= 70) {
+                scoreColor = "bg-blue-500";
+            } else if (percentage >= 50) {
+                scoreColor = "bg-yellow-500";
+            }
+            
+            // Display results
+            const resultsDiv = document.getElementById("results");
+            resultsDiv.innerHTML = `
+                <div class="bg-white rounded-lg shadow-md p-6 mt-8">
+                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-4">Test Results</h3>
+                    <div class="flex justify-center mb-6">
+                        <div class="relative">
+                            <div class="${scoreColor} text-white rounded-full h-28 w-28 flex items-center justify-center">
+                                <span class="text-3xl font-bold">${percentage}%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-center text-lg mb-4">You answered <span class="font-semibold">${score}</span> out of <span class="font-semibold">${totalQuestions}</span> questions correctly.</p>
+                    <div class="p-4 rounded-lg ${percentage >= 70 ? 'bg-green-50 text-green-800' : percentage >= 50 ? 'bg-yellow-50 text-yellow-800' : 'bg-red-50 text-red-800'}">
+                        ${getFeedbackMessage(percentage)}
+                    </div>
+                </div>
+            `;
+            
+            // Highlight correct and incorrect answers
+            for (let i = 0; i < totalQuestions; i++) {
+                const selectedOption = document.querySelector(`input[name="q${i}"]:checked`);
+                const correctOption = document.getElementById(`q${i}_opt${correctAnswers[i]}`);
+                
+                if (selectedOption) {
+                    if (parseInt(selectedOption.value) === correctAnswers[i]) {
+                        // Correct answer
+                        selectedOption.parentElement.classList.add("bg-green-100");
+                        selectedOption.parentElement.classList.add("rounded");
+                        selectedOption.parentElement.classList.add("p-2");
+                        selectedOption.parentElement.classList.add("-ml-2");
+                    } else {
+                        // Incorrect answer
+                        selectedOption.parentElement.classList.add("bg-red-100");
+                        selectedOption.parentElement.classList.add("rounded");
+                        selectedOption.parentElement.classList.add("p-2");
+                        selectedOption.parentElement.classList.add("-ml-2");
+                        
+                        correctOption.parentElement.classList.add("bg-green-100");
+                        correctOption.parentElement.classList.add("rounded");
+                        correctOption.parentElement.classList.add("p-2");
+                        correctOption.parentElement.classList.add("-ml-2");
+                    }
+                } else {
+                    // Unanswered question
+                    correctOption.parentElement.classList.add("bg-green-100");
+                    correctOption.parentElement.classList.add("rounded");
+                    correctOption.parentElement.classList.add("p-2");
+                    correctOption.parentElement.classList.add("-ml-2");
+                }
+            }
+            
+            resultsDiv.classList.remove("hidden");
+            
+            // Disable all inputs and the submit button
+            document.querySelectorAll('#test input[type="radio"]').forEach(input => {
+                input.disabled = true;
+            });
+            document.getElementById("submit-test").disabled = true;
+            document.getElementById("submit-test").classList.add("opacity-50", "cursor-not-allowed");
+            
+            // Reset the upload button
+            const uploadButton = document.getElementById('uploadButton');
+            uploadButton.className = "bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-6 rounded-lg transition-colors shadow-md hover:shadow-lg w-full sm:w-auto";
+            uploadButton.innerHTML = "Generate Test";
+            uploadButton.disabled = false;
+            
+            // Remove security measures
+            removeSecurityMeasures();
+        }
+
+        function getFeedbackMessage(percentage) {
+            if (percentage >= 90) {
+                return "Excellent! You have a strong understanding of these technical concepts.";
+            } else if (percentage >= 70) {
+                return "Good job! You have a solid grasp of most concepts.";
+            } else if (percentage >= 50) {
+                return "Not bad. There's room for improvement in some areas.";
+            } else {
+                return "You might want to review these concepts in more depth.";
+            }
+        }
+
+        // Initialize everything when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set up file input handling
+            document.getElementById('resumeFile').addEventListener('change', updateFileName);
+            
+            // Set up upload button click handler
+            document.getElementById('uploadButton').addEventListener('click', uploadResume);
+            
+            // Set up submit button click handler
+            document.getElementById('submit-test').addEventListener('click', submitTest);
+        });
+    </script>
+</body>
+</html>

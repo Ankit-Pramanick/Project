@@ -1,0 +1,6 @@
+Flask==3.1.0
+google-generativeai
+PyPDF2
+python-docx
+werkzeug
+gunicorn

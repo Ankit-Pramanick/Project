@@ -397,7 +397,7 @@
             document.getElementById("results").classList.add("hidden");
 
             try {
-                const response = await fetch("/upload_resume") {
+                const response = await fetch("/upload_resume", {
                     method: "POST",
                     body: formData
                 });

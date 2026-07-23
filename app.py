@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify, render_template
 import os
 import io
 import json
+import time
 import google.generativeai as genai
 import PyPDF2
 import docx
@@ -14,26 +15,89 @@ load_dotenv()
 app = Flask(__name__)
 
 # Set up Gemini API via Environment Variable with default fallback
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAHT3w96tMdb_I-IzDjWg2giYQq5i7EbUA")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-def get_model():
+# --- Model fallback list (ordered by preference) ---
+# We build a ranked list of available models at startup.
+# When generating content, we try each model in order,
+# automatically skipping models whose quota is exhausted.
+
+PREFERRED_MODEL_KEYWORDS = [
+    'gemini-3.6-flash',
+    'gemini-2.0-flash-lite',
+    'gemini-2.0-flash',
+    'gemini-3.5-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-2.5-pro',
+    'gemini-3.1-pro-preview',
+]
+
+def _build_model_list():
+    """Return a list of model name strings, ordered by preference."""
     try:
-        models = genai.list_models()
-        model_names = [model.name for model in models]
-        print("Available models:", model_names)
-        for name in ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-pro']:
-            if any(name in m for m in model_names):
-                print(f"Using model: {name}")
-                return genai.GenerativeModel(name)
+        all_models = genai.list_models()
+        supported = [
+            m.name for m in all_models
+            if 'generateContent' in getattr(m, 'supported_generation_methods', [])
+        ]
+        print("Available generateContent models:", supported)
     except Exception as e:
         print(f"Error listing models: {e}")
-    
-    print("Defaulting to gemini-1.5-flash")
-    return genai.GenerativeModel('gemini-1.5-flash')
+        supported = []
 
-model = get_model()
+    ordered = []
+    seen = set()
+    # First pass: add models that match our preference keywords, in order
+    for keyword in PREFERRED_MODEL_KEYWORDS:
+        for full_name in supported:
+            if keyword in full_name and full_name not in seen:
+                ordered.append(full_name)
+                seen.add(full_name)
+    # Second pass: add any remaining models we haven't added yet
+    for full_name in supported:
+        if full_name not in seen:
+            ordered.append(full_name)
+            seen.add(full_name)
+
+    if not ordered:
+        # Absolute last resort
+        ordered = ['models/gemini-2.0-flash-lite']
+
+    print("Model fallback order:", ordered)
+    return ordered
+
+MODEL_LIST = _build_model_list()
+
+def generate_with_fallback(prompt, max_retries=2, initial_delay=10):
+    """Try to generate content, falling back across models on quota errors."""
+    last_error = None
+    for model_name in MODEL_LIST:
+        model = genai.GenerativeModel(model_name)
+        for attempt in range(max_retries):
+            try:
+                response = model.generate_content(prompt)
+                return response  # success
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str or 'quota' in err_str.lower():
+                    if attempt < max_retries - 1:
+                        wait = initial_delay * (attempt + 1)
+                        print(f"Rate limited on {model_name}, retrying in {wait}s (attempt {attempt+1})...")
+                        time.sleep(wait)
+                    else:
+                        print(f"Quota exhausted for {model_name}, trying next model...")
+                        break  # move to next model
+                elif '404' in err_str or 'not found' in err_str.lower():
+                    print(f"Model {model_name} not found, skipping...")
+                    break  # move to next model
+                else:
+                    print(f"Unexpected error with {model_name}: {e}")
+                    break  # move to next model
+
+    raise Exception(f"All models exhausted. Last error: {last_error}")
 
 def extract_text_from_pdf(file_bytes):
     text = ""
@@ -63,7 +127,7 @@ def extract_skills_from_text(text):
     """
     
     try:
-        response = model.generate_content(prompt)
+        response = generate_with_fallback(prompt)
         skills_text = response.text
         
         # Process the response to get a clean list of skills
@@ -116,7 +180,7 @@ def generate_mcq_questions(skills, resume_text):
     """
     
     try:
-        response = model.generate_content(prompt)
+        response = generate_with_fallback(prompt)
         
         # Extracting JSON from the response
         questions_text = response.text.strip()

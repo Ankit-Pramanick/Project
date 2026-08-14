@@ -1,628 +1,947 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Resume Test Generator</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>SkillSift &mdash; Resume Technical Assessment</title>
+    <meta name="description" content="Extract skills from a resume and generate a timed technical assessment. Deterministic, fast, free for up to 5 runs per day.">
+    <meta property="og:title" content="SkillSift &mdash; Resume Technical Assessment Generator">
+    <meta property="og:description" content="Upload a resume, get a 15-question technical assessment in about a minute. Free for up to 5 runs per day.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://skillsiftai.onrender.com">
+    <meta property="og:image" content="https://skillsiftai.onrender.com/static/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://skillsiftai.onrender.com/static/og-image.png">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23171a1f'/%3E%3Cpath d='M8 10h16M8 16h16M8 22h10' stroke='%23f6f7f8' stroke-width='2'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: {
-                            50: '#f0f9ff',
-                            100: '#e0f2fe',
-                            200: '#bae6fd',
-                            300: '#7dd3fc',
-                            400: '#38bdf8',
-                            500: '#0ea5e9',
-                            600: '#0284c7',
-                            700: '#0369a1',
-                            800: '#075985',
-                            900: '#0c4a6e',
-                        }
-                    }
-                }
+        (function() {
+            var t = localStorage.getItem('skillsift_theme');
+            if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme:dark)').matches)) {
+                document.documentElement.classList.add('dark');
             }
-        }
+        })();
     </script>
 </head>
-<body class="bg-gray-50 min-h-screen">
-    <div class="container mx-auto py-8 px-4 max-w-4xl">
-        <div class="bg-white rounded-xl shadow-md p-6 mb-8">
-            <h1 class="text-3xl font-bold text-center text-primary-700 mb-6">SkillSift AI</h1>
-            
-            <div class="flex flex-col sm:flex-row items-center gap-4 mb-6">
-                <label for="resumeFile" class="flex-1 w-full">
-                    <div id="uploadArea" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-primary-500 transition-colors">
-                        <div class="mb-2 text-primary-600">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                            </svg>
-                        </div>
-                        <p class="text-gray-600 mb-1">Upload your resume</p>
-                        <p class="text-xs text-gray-500">Supported formats: PDF, DOCX</p>
-                        <div id="selectedFile" class="mt-3 text-primary-600 font-medium hidden"></div>
-                        <input type="file" id="resumeFile" accept=".pdf,.docx" class="hidden">
-                    </div>
-                </label>
-                <button id="uploadButton" class="bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-6 rounded-lg transition-colors shadow-md hover:shadow-lg w-full sm:w-auto">
-                    Generate Test
-                </button>
-            </div>
-            
-            <div id="loading" class="hidden">
-                <div class="flex justify-center items-center py-8">
-                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-700"></div>
-                </div>
-                <p class="text-center text-gray-600">Analyzing resume and generating test questions...</p>
-            </div>
-            
-            <div id="skills" class="mb-8"></div>
-            
-            <div id="test" class="mb-8"></div>
-            
-            <div id="submit-section" class="hidden text-center">
-                <button id="submit-test" class="bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-8 rounded-lg transition-colors shadow-md hover:shadow-lg">
-                    Submit Test
-                </button>
-            </div>
-            
-            <div id="results" class="hidden"></div>
-        </div>
-    </div>
-    
-    <!-- Warning Modal -->
-    <div id="warningModal" class="fixed inset-0 flex items-center justify-center z-50 hidden">
-        <div class="absolute inset-0 bg-black bg-opacity-50"></div>
-        <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full z-10">
-            <div class="flex items-center justify-center text-red-500 mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-            </div>
-            <h3 class="text-xl font-bold text-center mb-2">Security Warning</h3>
-            <p id="warningMessage" class="text-center mb-4">Unauthorized action detected. Please remain in the test window.</p>
-            <p class="text-center text-red-500 font-medium mb-4">
-                Warning <span id="warningCount">1</span> of 3
-            </p>
-            <div class="flex justify-center">
-                <button onclick="closeWarningModal()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
-                    Return to Test
-                </button>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Test Canceled Modal -->
-    <div id="canceledModal" class="fixed inset-0 flex items-center justify-center z-50 hidden">
-        <div class="absolute inset-0 bg-black bg-opacity-50"></div>
-        <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full z-10">
-            <div class="flex items-center justify-center text-red-500 mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </div>
-            <h3 class="text-xl font-bold text-center mb-2">Test Canceled</h3>
-            <p class="text-center mb-6">Your test has been canceled due to multiple security violations.</p>
-            <div class="flex justify-center">
-                <button onclick="resetTest()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg">
-                    Return to Start
-                </button>
-            </div>
-        </div>
-    </div>
-    
-    <script>
-        // Store questions and answers globally
-        let testQuestions = [];
-        let correctAnswers = [];
-        let testInProgress = false;
-        let warningCount = 0;
-        let originalTitle = document.title;
-        let hasFocus = true;
-        let visibilityInterval;
-        let timerInterval;
-        let timeRemaining = 600; // 10 minutes in seconds
+<body class="bg-zinc-50 dark:bg-zinc-950 text-zinc-700 dark:text-zinc-300 min-h-screen font-sans antialiased text-[13px]">
 
-        // Format time as MM:SS
-        function formatTime(seconds) {
-            const minutes = Math.floor(seconds / 60);
-            const remainingSeconds = seconds % 60;
-            return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+    <!-- Toasts -->
+    <div id="toast-container" class="fixed top-14 right-4 z-[60] space-y-2 w-full max-w-sm pointer-events-none"></div>
+
+    <!-- ===== NAV ===== -->
+    <header class="sticky top-0 z-40 nav-glass">
+        <div class="max-w-7xl mx-auto px-4 h-12 flex items-center justify-between gap-4">
+            <a href="/" class="flex items-center gap-2 font-mono font-semibold text-[13px] tracking-tight text-zinc-900 dark:text-zinc-100 shrink-0">
+                <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-brand-600 text-[10px] text-white font-bold">S</span>
+                skillshift<span class="text-zinc-400">/assess</span>
+            </a>
+            <div class="flex items-center gap-1.5 text-xs">
+                <span id="nav-usage-badge" class="hidden font-mono text-[11px] text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 px-2 py-0.5 rounded-md"></span>
+                <kbd class="hidden md:inline-flex items-center gap-0.5 font-mono text-[11px] text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded-md" title="Open resume file">&#8984;K</kbd>
+                <button id="themeToggle" class="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-zinc-500 dark:text-zinc-400" title="Toggle theme (T)">
+                    <svg id="sunIcon" class="h-4 w-4 hidden dark:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                    <svg id="moonIcon" class="h-4 w-4 block dark:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+                </button>
+                <button id="signInBtn" class="hidden sm:inline-flex text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium transition-colors px-2.5 py-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800">Sign In</button>
+                <button id="signUpBtn" class="bg-brand-600 hover:bg-brand-700 text-white font-medium px-3 py-1.5 rounded-md transition-colors shadow-sm btn-press">Sign Up</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== SPLIT PANE WORKSPACE ===== -->
+    <main class="max-w-7xl mx-auto px-4 py-6 animate-rise-in">
+
+        <!-- Title strip -->
+        <div class="mb-6 pb-5 border-b border-zinc-200 dark:border-zinc-800">
+            <h1 class="font-display font-semibold text-xl md:text-2xl tracking-tight leading-snug text-zinc-900 dark:text-zinc-100">Resume &rarr; Technical Assessment</h1>
+            <p class="text-zinc-500 dark:text-zinc-400 text-xs mt-1.5 max-w-2xl leading-relaxed">
+                Paste-free pipeline: parse PDF/DOCX, extract skills, generate a timed MCQ + case assessment, score server-side.
+                <span class="font-mono text-[11px] text-zinc-400 dark:text-zinc-500">[5 runs/day &middot; anonymous]</span>
+            </p>
+        </div>
+
+        <div class="grid lg:grid-cols-[380px_1fr] gap-5 items-start">
+
+            <!-- ===== LEFT: INPUT PARAMS ===== -->
+            <div class="space-y-5 min-w-0">
+
+                <!-- Input Params panel -->
+                <section class="glass-card p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Input Params</h2>
+                        <span class="inline-flex items-center gap-1.5 font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
+                            <span class="h-1.5 w-1.5 rounded-full bg-success-500"></span>online
+                        </span>
+                    </div>
+
+                    <!-- Upload zone -->
+                    <label for="resumeFile" class="block cursor-pointer">
+                        <div id="uploadArea" class="upload-zone">
+                            <div class="upload-zone-inner p-7 text-center">
+                                <div id="uploadIcon" class="mb-3 text-zinc-400 dark:text-zinc-500 animate-float">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-9 w-9 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                </div>
+                                <p class="text-zinc-800 dark:text-zinc-200 font-medium text-sm mb-0.5">Drop a resume, or click to browse</p>
+                                <p class="font-mono text-[10px] text-zinc-400 dark:text-zinc-500">.pdf / .docx &middot; max 5 MB</p>
+                                <div id="selectedFile" class="mt-2 font-mono text-[11px] text-zinc-600 dark:text-zinc-300 hidden"></div>
+                                <input type="file" id="resumeFile" accept=".pdf,.docx" class="hidden">
+                            </div>
+                        </div>
+                    </label>
+
+                    <!-- Config row -->
+                    <div class="flex items-center justify-between mt-4 gap-2">
+                        <label for="questionCount" class="font-mono text-[11px] text-zinc-500 dark:text-zinc-400 shrink-0">QUESTIONS</label>
+                        <select id="questionCount" class="font-mono text-xs border border-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 rounded-md px-2.5 py-1.5 focus:ring-2 focus:ring-brand-500 outline-none transition-colors">
+                            <option value="10">10</option>
+                            <option value="15" selected>15</option>
+                            <option value="20">20</option>
+                        </select>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex gap-2 mt-4">
+                        <button id="generateBtn" class="bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium text-xs py-2.5 px-4 rounded-md transition-colors flex-1 flex items-center justify-center gap-1.5 btn-press shadow-sm">
+                            <svg class="h-4 w-4 hidden animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                            Generate
+                        </button>
+                        <button id="sampleBtn" class="border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-600 dark:text-zinc-300 font-medium text-xs py-2.5 px-4 rounded-md transition-colors btn-press">Sample</button>
+                    </div>
+
+                    <!-- Loading progress -->
+                    <div id="loading" class="hidden mt-5 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+                        <div class="h-1 bg-zinc-100 dark:bg-zinc-800 overflow-hidden mb-4">
+                            <div id="progress-bar" class="h-full bg-gradient-to-r from-brand-500 via-brand-400 to-brand-500 rounded-md transition-all duration-700 ease-out progress-shimmer" style="width:0%"></div>
+                        </div>
+                        <div class="space-y-3">
+                            <div id="step-1" class="flex items-center gap-3 text-zinc-400 text-sm relative">
+                                <span id="step-1-icon" class="inline-flex items-center justify-center h-6 w-6 rounded-full border border-current text-[10px] font-bold shrink-0">1</span>
+                                <span class="font-mono text-[11px]">parse</span>
+                                <span>Uploading &amp; parsing resume</span>
+                                <div class="stepper-connector"></div>
+                            </div>
+                            <div id="step-2" class="flex items-center gap-3 text-zinc-400 text-sm relative">
+                                <span id="step-2-icon" class="inline-flex items-center justify-center h-6 w-6 rounded-full border border-current text-[10px] font-bold shrink-0">2</span>
+                                <span class="font-mono text-[11px]">extract</span>
+                                <span>Extracting skills with Gemini</span>
+                                <div class="stepper-connector"></div>
+                            </div>
+                            <div id="step-3" class="flex items-center gap-3 text-zinc-400 text-sm relative">
+                                <span id="step-3-icon" class="inline-flex items-center justify-center h-6 w-6 rounded-full border border-current text-[10px] font-bold shrink-0">3</span>
+                                <span class="font-mono text-[11px]">build</span>
+                                <span>Generating assessment questions</span>
+                            </div>
+                        </div>
+                        <p id="loading-status" class="text-center font-mono text-[10px] text-zinc-400 dark:text-zinc-500 mt-4 loading-status-pulse">~60s</p>
+                    </div>
+                </section>
+
+                <!-- Usage Meter -->
+                <section class="sidebar-card-1 p-4" data-acc>
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Usage</h3>
+                        <div class="flex items-center gap-0.5">
+                            <button id="infoBtn" class="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 transition-colors" title="How SkillSift works">
+                                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            </button>
+                            <button type="button" class="acc-toggle p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 transition-colors" title="Collapse" aria-label="Toggle panel">
+                                <svg class="acc-chevron h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="acc-body">
+                        <div class="flex items-center gap-3 mb-2">
+                            <div class="relative h-14 w-14 shrink-0">
+                                <svg class="h-14 w-14" viewBox="0 0 100 100">
+                                    <circle class="usage-ring-bg" cx="50" cy="50" r="42" fill="none" stroke-width="10"/>
+                                    <circle id="usageRing" cx="50" cy="50" r="42" fill="none" stroke="#6366f1" stroke-width="10" stroke-linecap="butt" stroke-dasharray="264" stroke-dashoffset="264" style="transform:rotate(-90deg);transform-origin:center"/>
+                                </svg>
+                                <span id="usageRingText" class="absolute inset-0 flex items-center justify-center font-mono text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">0/5</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div id="usageText" class="font-mono text-[11px] text-zinc-500 dark:text-zinc-400">&hellip;</div>
+                                <div class="h-1 bg-zinc-100 dark:bg-zinc-800 overflow-hidden mt-1">
+                                    <div id="usageBar" class="h-full bg-gradient-to-r from-brand-500 to-brand-400 rounded-md transition-all duration-500 ease-out" style="width:0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <p id="usageNote" class="font-mono text-[10px] text-zinc-400 dark:text-zinc-500">Sign in (coming soon) for unlimited runs.</p>
+                    </div>
+                </section>
+
+                <!-- Recent history -->
+                <section class="sidebar-card-2 p-4" data-acc data-acc-collapse-default>
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">Recent Runs</h3>
+                        <div class="flex items-center gap-0.5">
+                            <button id="clearHistoryBtn" class="font-mono text-[10px] text-zinc-400 hover:text-danger-500 dark:hover:text-danger-400 transition-colors hidden">clear</button>
+                            <button type="button" class="acc-toggle p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 transition-colors" title="Collapse" aria-label="Toggle panel">
+                                <svg class="acc-chevron h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="acc-body">
+                        <div id="historyEmpty" class="font-mono text-[11px] text-zinc-400 dark:text-zinc-500">no runs yet</div>
+                        <div id="historyList" class="space-y-1.5 hidden"></div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ===== RIGHT: OUTPUT ===== -->
+            <div class="min-w-0">
+
+                <!-- Output panel -->
+                <section id="outputPanel" class="glass-card hidden">
+                    <div class="flex items-center justify-between px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-800">
+                        <div class="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+                            <span class="h-1.5 w-1.5 rounded-full bg-zinc-400" id="outputStatusDot"></span>
+                            Output
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <button id="copyBtn" class="font-mono text-[11px] text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors px-2 py-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 btn-press">copy</button>
+                            <button id="exportBtn" class="font-mono text-[11px] text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors px-2 py-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 btn-press">export</button>
+                            <button id="clearBtn" class="font-mono text-[11px] text-danger-500 hover:text-danger-700 dark:text-danger-400 transition-colors px-2 py-1 rounded-md hover:bg-danger-50 dark:hover:bg-danger-950/20 btn-press">clear</button>
+                        </div>
+                    </div>
+                    <div class="px-5 py-4 space-y-5">
+                        <div id="skills"></div>
+                        <div id="test"></div>
+                        <div id="submit-section" class="hidden text-center">
+                            <button id="submit-test" class="bg-success-600 hover:bg-success-700 text-white font-semibold py-2.5 px-8 rounded-md transition-colors btn-press text-sm shadow-sm">Submit Test</button>
+                        </div>
+                        <div id="results" class="hidden"></div>
+                    </div>
+                </section>
+
+                <!-- Empty state (right pane before generation) -->
+                <section id="outputEmpty" class="glass-card p-8 flex flex-col items-center justify-center text-center min-h-[360px]">
+                    <div class="font-mono text-[11px] text-zinc-400 dark:text-zinc-500 mb-2">$ skillshift --generate</div>
+                    <p class="text-base font-semibold text-zinc-800 dark:text-zinc-200">No assessment yet</p>
+                    <p class="text-sm text-zinc-400 dark:text-zinc-500 mt-2 max-w-sm leading-relaxed">Drop a resume on the left, or hit <span class="font-mono font-medium text-zinc-600 dark:text-zinc-300">Sample</span> to run the demo pipeline. Output renders here as structured JSON-ready blocks.</p>
+                    <pre class="mt-6 font-mono text-[10px] text-zinc-400 dark:text-zinc-500 text-left leading-relaxed">$ skillshift parse ./resume.pdf
+   &rarr; skills: 21 found
+ $ skillshift build --count 15
+   &rarr; assessment ready</pre>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="border-t border-zinc-200 dark:border-zinc-800 mt-10">
+        <div class="max-w-7xl mx-auto px-4 py-5">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-2 font-mono text-[11px] text-zinc-400 dark:text-zinc-500">
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex h-4 w-4 items-center justify-center rounded-md bg-brand-600 text-[8px] text-white font-bold">S</span>
+                    <span>&copy; 2025 SkillSift</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <a href="https://github.com/Ankit-Pramanick/Project" target="_blank" rel="noopener" class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">github</a>
+                    <span class="text-zinc-300 dark:text-zinc-700">&middot;</span>
+                    <span class="cursor-default" title="Privacy policy coming soon">privacy</span>
+                    <span class="text-zinc-300 dark:text-zinc-700">&middot;</span>
+                    <span class="inline-flex items-center gap-1">built with <svg class="h-3 w-3 text-zinc-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L1 21h22L12 2zm0 4l7.53 13H4.47L12 6z"/></svg> gemini</span>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scroll to top -->
+    <button id="scrollTopBtn" class="fixed bottom-4 right-4 z-30 h-9 w-9 flex items-center justify-center transition-all btn-press hidden scroll-top-btn" title="Scroll to top">
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>
+    </button>
+
+    <!-- Mobile sticky CTA -->
+    <div id="mobileCta" class="lg:hidden mobile-sticky-cta hidden">
+        <button id="mobileGenerateBtn" class="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold text-sm py-2.5 rounded-md btn-press flex items-center justify-center gap-2 shadow-sm">Generate</button>
+    </div>
+
+    <!-- ===== INFO MODAL ===== -->
+    <div id="infoModal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/60 dark:bg-black/70 modal-backdrop" onclick="closeInfoModal()"></div>
+        <div class="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 max-w-lg w-full mx-4 mt-[10vh] mx-auto p-5 rounded-xl modal-panel">
+            <div class="flex items-center justify-between mb-4 border-b border-zinc-200 dark:border-zinc-800 pb-3">
+                <h2 class="font-mono text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">skillshift --help</h2>
+                <button onclick="closeInfoModal()" class="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 transition-colors"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </div>
+            <div class="space-y-3 font-mono text-[11px] text-zinc-600 dark:text-zinc-300 leading-relaxed">
+                <p><span class="text-zinc-400">01.</span> Drop a PDF/DOCX resume on the left panel.</p>
+                <p><span class="text-zinc-400">02.</span> Pick a question count (10 / 15 / 20), then <span class="text-zinc-900 dark:text-zinc-100 font-medium">Generate</span>.</p>
+                <p><span class="text-zinc-400">03.</span> Gemini extracts skills and builds a timed MCQ + case assessment (~1 min).</p>
+                <p><span class="text-zinc-400">04.</span> Submit &mdash; scoring is server-side; the answer key never leaves the server.</p>
+                <p><span class="text-zinc-400">05.</span> <span class="text-zinc-900 dark:text-zinc-100 font-medium">copy</span> / <span class="text-zinc-900 dark:text-zinc-100 font-medium">export</span> the result, or <span class="text-zinc-900 dark:text-zinc-100 font-medium">clear</span> to start over.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== AUTH MODAL ===== -->
+    <div id="authModal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/60 dark:bg-black/70 modal-backdrop" onclick="closeAuthModal()"></div>
+        <div class="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 max-w-md w-full mx-4 mt-[12vh] mx-auto p-5 rounded-xl modal-panel">
+            <div class="flex items-center justify-between mb-4 border-b border-zinc-200 dark:border-zinc-800 pb-3">
+                <h2 class="font-mono text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">Accounts &mdash; coming soon</h2>
+                <button onclick="closeAuthModal()" class="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 transition-colors"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </div>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">Team accounts, run history sync, and unlimited daily generation are on the roadmap. Until then the tool is anonymous and free for 5 runs per day.</p>
+        </div>
+    </div>
+
+    <!-- ===== PROCTORING WARNING MODAL ===== -->
+    <div id="warningModal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/60 dark:bg-black/70 modal-backdrop"></div>
+        <div class="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 max-w-md w-full mx-4 mt-[12vh] mx-auto p-5 rounded-xl modal-panel">
+            <div class="flex items-center justify-between mb-4 border-b border-zinc-200 dark:border-zinc-800 pb-3">
+                <h2 class="font-mono text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">Focus warning</h2>
+            </div>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed"><span id="warningMessage"></span> Leaving the tab <span id="warningCount"></span> time(s) may flag your session.</p>
+        </div>
+    </div>
+
+    <!-- ===== CANCELLED MODAL ===== -->
+    <div id="canceledModal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/60 dark:bg-black/70 modal-backdrop"></div>
+        <div class="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 max-w-md w-full mx-4 mt-[12vh] mx-auto p-5 rounded-xl modal-panel">
+            <div class="flex items-center justify-between mb-4 border-b border-zinc-200 dark:border-zinc-800 pb-3">
+                <h2 class="font-mono text-sm font-semibold tracking-tight text-danger-600">Test cancelled</h2>
+            </div>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">This run was cancelled. Click Generate to start a new assessment.</p>
+        </div>
+    </div>
+
+    <script>
+        /* ============================================================
+           STATE
+           ============================================================ */
+        var testQuestions = [];
+        var correctAnswers = [];
+        var currentTestId = null;
+        var testInProgress = false;
+        var warningCount = 0;
+        var originalTitle = document.title;
+        var hasFocus = true;
+        var visibilityInterval;
+        var timerInterval;
+        var timeRemaining = 600;
+        var usageData = { used: 0, limit: 5, remaining: 5, date: '' };
+        var progressInterval = null;
+        var progressElapsed = 0;
+        var isGenerating = false;
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, function(c) {
+                return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+            });
         }
 
-        // Start the timer
-        function startTimer() {
-            // Convert upload button to timer display
-            const uploadButton = document.getElementById('uploadButton');
-            uploadButton.className = "bg-primary-600 text-white font-medium py-3 px-6 rounded-lg shadow-md w-full sm:w-auto";
-            uploadButton.innerHTML = `Time Remaining: <span id="timer-display">${formatTime(timeRemaining)}</span>`;
-            uploadButton.disabled = true;
-            
-            timerInterval = setInterval(() => {
-                timeRemaining--;
-                document.getElementById('timer-display').textContent = formatTime(timeRemaining);
-                
-                // Change color when less than 1 minute remains
-                if (timeRemaining <= 60) {
-                    uploadButton.classList.remove('bg-primary-600');
-                    uploadButton.classList.add('bg-red-600');
-                }
-                
-                // Auto-submit when time is up
-                if (timeRemaining <= 0) {
-                    stopTimer();
-                    submitTest();
-                }
+        /* ============================================================
+           TOASTS (enhanced with slide-in + progress bar)
+           ============================================================ */
+        function showToast(message, type, duration) {
+            type = type || 'error';
+            duration = duration || 6000;
+            var container = document.getElementById('toast-container');
+            if (!container) return;
+            var s = {
+                error:'bg-red-50 border-red-200 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-300',
+                success:'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950 dark:border-emerald-800 dark:text-emerald-300',
+                info:'bg-primary-50 border-primary-200 text-primary-800 dark:bg-primary-950 dark:border-primary-800 dark:text-primary-300'
+            };
+            var progressColors = {
+                error: 'bg-red-400',
+                success: 'bg-emerald-400',
+                info: 'bg-primary-400'
+            };
+            var ic = {
+                error:'<svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>',
+                success:'<svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>',
+                info:'<svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+            };
+            var t = document.createElement('div');
+            t.className = (s[type]||s.info) + ' border rounded-xl px-4 py-3 shadow-lg text-sm font-medium flex items-center gap-2.5 pointer-events-auto relative overflow-hidden toast-enhanced';
+            t.innerHTML = (ic[type]||'') + '<span>' + escapeHtml(message) + '</span>' +
+                '<div class="toast-progress ' + (progressColors[type]||progressColors.info) + '" style="animation-duration:' + duration + 'ms"></div>';
+            container.appendChild(t);
+            setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translateX(100%)'; t.style.transition = 'all 0.3s ease'; }, duration - 300);
+            setTimeout(function(){ t.remove(); }, duration);
+        }
+
+        /* ============================================================
+           LOADING PROGRESS (enhanced stepper)
+           ============================================================ */
+        function startProgress() {
+            progressElapsed = 0;
+            setLoadingStep(1);
+            var bar = document.getElementById('progress-bar');
+            if (bar) bar.style.width = '8%';
+            clearInterval(progressInterval);
+            progressInterval = setInterval(function() {
+                progressElapsed += 1;
+                var step = 1, width = 8;
+                if (progressElapsed < 4) { step = 1; width = 8 + progressElapsed * 2; }
+                else if (progressElapsed < 22) { step = 2; width = 16 + (progressElapsed - 4) * 1.6; }
+                else { step = 3; width = 45 + Math.min(progressElapsed - 22, 20) * 2.2; }
+                setLoadingStep(step);
+                if (bar) bar.style.width = Math.min(width, 92) + '%';
             }, 1000);
         }
-
-        // Stop the timer
-        function stopTimer() {
-            clearInterval(timerInterval);
+        function stopProgress() {
+            clearInterval(progressInterval);
+            progressInterval = null;
+            var bar = document.getElementById('progress-bar');
+            if (bar) bar.style.width = '100%';
+            setTimeout(function() { document.getElementById('loading').classList.add('hidden'); }, 400);
+        }
+        function setLoadingStep(n) {
+            var names = { 1:'Uploading & parsing resume', 2:'Extracting skills with Gemini', 3:'Generating assessment questions' };
+            for (var s = 1; s <= 3; s++) {
+                var row = document.getElementById('step-' + s);
+                var icon = document.getElementById('step-' + s + '-icon');
+                var connector = row ? row.querySelector('.stepper-connector') : null;
+                if (!row || !icon) continue;
+                if (s < n) {
+                    row.className = 'flex items-center gap-3 text-emerald-600 dark:text-emerald-400 text-sm relative';
+                    icon.className = 'inline-flex items-center justify-center h-6 w-6 rounded-full bg-emerald-500 text-white text-xs font-bold shrink-0 step-check-enter';
+                    icon.textContent = '\u2713';
+                    if (connector) connector.classList.add('completed');
+                } else if (s === n) {
+                    row.className = 'flex items-center gap-3 text-primary-600 dark:text-primary-400 font-medium text-sm relative';
+                    icon.className = 'inline-flex items-center justify-center h-6 w-6 rounded-full border-2 border-primary-500 text-primary-500 text-xs font-bold shrink-0 animate-pulse step-active-glow';
+                    icon.textContent = s;
+                    if (connector) connector.classList.remove('completed');
+                } else {
+                    row.className = 'flex items-center gap-3 text-slate-400 text-sm relative';
+                    icon.className = 'inline-flex items-center justify-center h-6 w-6 rounded-full border-2 border-current text-xs font-bold shrink-0';
+                    icon.textContent = s;
+                    if (connector) connector.classList.remove('completed');
+                }
+            }
+            var st = document.getElementById('loading-status');
+            if (st) st.textContent = (names[n]||'') + '...';
         }
 
-        // Show selected filename
-        function updateFileName() {
-            const fileInput = document.getElementById('resumeFile');
-            const selectedFileElement = document.getElementById('selectedFile');
-            const uploadArea = document.getElementById('uploadArea');
-            
-            if (fileInput.files.length > 0) {
-                // Change the upload area styling to show selection
-                uploadArea.classList.add('border-primary-500');
-                uploadArea.classList.add('bg-primary-50');
-                
-                // Display the filename
-                selectedFileElement.textContent = fileInput.files[0].name;
-                selectedFileElement.classList.remove('hidden');
-                
-                // Change the upload icon to a check mark
-                const iconContainer = uploadArea.querySelector('svg').parentElement;
-                iconContainer.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                `;
+        /* ============================================================
+           BUTTONS
+           ============================================================ */
+        function setGenerating(on) {
+            isGenerating = on;
+            var gb = document.getElementById('generateBtn');
+            var sb = document.getElementById('sampleBtn');
+            var sp = document.getElementById('generateBtn').querySelector('svg');
+            [gb, sb].forEach(function(b) { if (!b) return; b.disabled = on; });
+            if (sp) sp.classList.toggle('hidden', !on);
+            // Sync mobile CTA
+            var mgb = document.getElementById('mobileGenerateBtn');
+            if (mgb) mgb.disabled = on;
+        }
+
+        /* ============================================================
+           DARK MODE
+           ============================================================ */
+        function toggleTheme() {
+            var h = document.documentElement;
+            h.classList.toggle('dark');
+            localStorage.setItem('skillsift_theme', h.classList.contains('dark') ? 'dark' : 'light');
+        }
+
+        /* ============================================================
+           ANON KEY + USAGE
+           ============================================================ */
+        function getAnonKey() {
+            var k = localStorage.getItem('skillsift_anon_id');
+            if (!k) { k = crypto.randomUUID ? crypto.randomUUID() : ('a' + Math.random().toString(36).slice(2)); localStorage.setItem('skillsift_anon_id', k); }
+            return k;
+        }
+        function fetchUsage() {
+            fetch('/api/usage', { headers: { 'X-Anon-Key': getAnonKey() } }).then(function(r){ return r.json(); }).then(function(d) {
+                if (d.usage) updateUsageUI(d.usage);
+            }).catch(function(){});
+        }
+        function updateUsageUI(u) {
+            usageData = u;
+            var pct = Math.round((u.used / u.limit) * 100);
+            document.getElementById('usageBar').style.width = pct + '%';
+            document.getElementById('usageText').textContent = u.used + ' of ' + u.limit + ' free runs used today';
+            var ring = document.getElementById('usageRing');
+            if (ring) {
+                var circ = 264;
+                ring.style.strokeDashoffset = (circ * (1 - u.used / u.limit)).toFixed(1);
+            }
+            var rt = document.getElementById('usageRingText');
+            if (rt) rt.textContent = u.remaining + '/' + u.limit;
+            var badge = document.getElementById('nav-usage-badge');
+            if (badge) { badge.textContent = u.remaining + ' runs left'; badge.classList.remove('hidden'); }
+            var disabled = u.remaining <= 0;
+            document.getElementById('generateBtn').disabled = disabled || isGenerating;
+            document.getElementById('sampleBtn').disabled = disabled || isGenerating;
+            if (disabled) {
+                document.getElementById('usageBar').classList.add('from-red-500','to-red-600');
+                document.getElementById('usageBar').classList.remove('from-primary-500','to-violet-500');
+                if (ring) ring.style.stroke = '#ef4444';
+                document.getElementById('usageNote').textContent = 'Daily limit reached. Come back tomorrow or sign in (coming soon) for more.';
             } else {
-                // Reset to default state
-                uploadArea.classList.remove('border-primary-500');
-                uploadArea.classList.remove('bg-primary-50');
-                selectedFileElement.classList.add('hidden');
+                document.getElementById('usageBar').classList.remove('from-red-500','to-red-600');
+                document.getElementById('usageBar').classList.add('from-primary-500','to-violet-500');
+                if (ring) ring.style.stroke = '';
+                document.getElementById('usageNote').textContent = 'Sign in (coming soon) for unlimited runs.';
             }
         }
 
-        // Setup security measures when test is started
-        function setupSecurityMeasures() {
-            testInProgress = true;
-            warningCount = 0;
-            
-            // Disable right-click
-            document.addEventListener('contextmenu', preventDefaultAction);
-            
-            // Disable copy
-            document.addEventListener('copy', preventDefaultAction);
-            document.addEventListener('cut', preventDefaultAction);
-            
-            // Track window focus
-            window.addEventListener('blur', windowBlurred);
-            window.addEventListener('focus', windowFocused);
-            
-            // Track visibility changes
-            document.addEventListener('visibilitychange', visibilityChanged);
-            
-            // Monitor for rapid tab switching
-            visibilityInterval = setInterval(checkVisibilityState, 500);
-            
-            // Prevent keyboard shortcuts
-            document.addEventListener('keydown', preventKeyboardShortcuts);
+        /* ============================================================
+           HISTORY
+           ============================================================ */
+        function getHistory() { try { return JSON.parse(localStorage.getItem('skillsift_history')) || []; } catch(e) { return []; } }
+        function saveHistory(h) { localStorage.setItem('skillsift_history', JSON.stringify(h.slice(0, 20))); }
+        function addHistory(run) {
+            var h = getHistory(); h.unshift(run); saveHistory(h); renderHistory();
         }
-        
-        // Remove security measures when test completes
-        function removeSecurityMeasures() {
-            testInProgress = false;
-            
-            // Remove event listeners
-            document.removeEventListener('contextmenu', preventDefaultAction);
-            document.removeEventListener('copy', preventDefaultAction);
-            document.removeEventListener('cut', preventDefaultAction);
-            document.removeEventListener('selectstart', preventDefaultAction);
-            window.removeEventListener('blur', windowBlurred);
-            window.removeEventListener('focus', windowFocused);
-            document.removeEventListener('visibilitychange', visibilityChanged);
-            document.removeEventListener('keydown', preventKeyboardShortcuts);
-            
-            // Clear interval
-            clearInterval(visibilityInterval);
-            
-            // Reset title
-            document.title = originalTitle;
+        function renderHistory() {
+            var h = getHistory();
+            var empty = document.getElementById('historyEmpty');
+            var list = document.getElementById('historyList');
+            var clear = document.getElementById('clearHistoryBtn');
+            if (!h.length) { empty.classList.remove('hidden'); list.classList.add('hidden'); clear.classList.add('hidden'); return; }
+            empty.classList.add('hidden'); list.classList.remove('hidden'); clear.classList.remove('hidden');
+            list.innerHTML = '';
+            h.forEach(function(r) {
+                var d = document.createElement('div');
+                d.className = 'bg-slate-50 dark:bg-slate-800 rounded-xl px-3.5 py-3 text-xs cursor-default history-item border border-transparent hover:border-slate-200 dark:hover:border-slate-700';
+                var statusColor = r.source === 'sample' ? 'bg-violet-400' : 'bg-primary-400';
+                d.innerHTML = '<div class="flex items-center justify-between mb-1"><span class="font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5"><span class="h-2 w-2 rounded-full ' + statusColor + ' shrink-0"></span>' + (r.source === 'sample' ? 'Sample Resume' : escapeHtml(r.fileName || 'Resume')) + '</span><span class="text-slate-400">' + r.skillsCount + ' skills</span></div><div class="text-slate-400 dark:text-slate-500">' + r.questionsCount + ' questions &middot; ' + r.time + '</div>';
+                list.appendChild(d);
+            });
         }
-        
-        // Event handlers
-        function preventDefaultAction(e) {
-            if (testInProgress) {
-                e.preventDefault();
-                showWarning("Copying or right-clicking is not allowed during the test.");
-            }
-        }
-        
-        function windowBlurred() {
-            if (testInProgress) {
-                hasFocus = false;
-                document.title = "⚠️ RETURN TO TEST IMMEDIATELY ⚠️";
-                showWarning("Leaving the test window is not allowed.");
-            }
-        }
-        
-        function windowFocused() {
-            if (testInProgress) {
-                hasFocus = true;
-                document.title = originalTitle;
-            }
-        }
-        
-        function visibilityChanged() {
-            if (testInProgress && document.visibilityState === 'hidden') {
-                showWarning("Switching tabs or minimizing the window is not allowed.");
-            }
-        }
-        
-        function checkVisibilityState() {
-            if (testInProgress && !hasFocus) {
-                document.title = "⚠️ RETURN TO TEST IMMEDIATELY ⚠️";
-            }
-        }
-        
-        function preventKeyboardShortcuts(e) {
-            if (testInProgress) {
-                // Prevent common shortcuts (Ctrl+C, Ctrl+V, Ctrl+P, etc.)
-                if ((e.ctrlKey || e.metaKey) && 
-                    (e.key === 'c' || e.key === 'v' || e.key === 'p' || 
-                     e.key === 'a' || e.key === 's' || e.key === 'u' || 
-                     e.key === 'f' || e.key === 'g' || e.key === 'j' || 
-                     e.key === 'l' || e.key === 'n' || e.key === 'o' || 
-                     e.key === 'i' || e.key === 'k' || e.key === 'r' || 
-                     e.key === 'e' || e.keyCode === 123)) { // F12
-                    e.preventDefault();
-                    showWarning("Keyboard shortcuts are not allowed during the test.");
-                }
-                
-                // Prevent Alt+Tab
-                if (e.altKey && e.key === 'Tab') {
-                    e.preventDefault();
-                    showWarning("Switching windows is not allowed during the test.");
-                }
+        function clearHistory() { localStorage.removeItem('skillsift_history'); renderHistory(); }
 
-                // Prevent to open devtools
-                if (e.key === 'F12') {
-                    e.preventDefault();
-                    showWarning("Developer tools are not allowed during the test.");
-                }
-                
-                // Prevent PrintScreen
-                if (e.key === 'PrintScreen') {
-                    e.preventDefault();
-                    showWarning("Screenshots are not allowed during the test.");
-                }
-            }
-        }
-        
-        // Show warning modal
-        function showWarning(message) {
-            if (!testInProgress) return;
-            
-            warningCount++;
-            document.getElementById('warningMessage').textContent = message;
-            document.getElementById('warningCount').textContent = warningCount;
-            document.getElementById('warningModal').classList.remove('hidden');
-            
-            if (warningCount >= 3) {
-                cancelTest();
-            }
-        }
-        
-        // Close warning modal
-        function closeWarningModal() {
-            document.getElementById('warningModal').classList.add('hidden');
-        }
-        
-        // Cancel test
-        function cancelTest() {
-            closeWarningModal();
-            document.getElementById('canceledModal').classList.remove('hidden');
-            removeSecurityMeasures();
-            stopTimer();
-        }
-        
-        // Reset test
-        function resetTest() {
-            document.getElementById('canceledModal').classList.add('hidden');
-            document.getElementById('test').innerHTML = "";
+        /* ============================================================
+           MODALS
+           ============================================================ */
+        function openInfoModal() { document.getElementById('infoModal').classList.remove('hidden'); }
+        function closeInfoModal() { document.getElementById('infoModal').classList.add('hidden'); }
+        function openAuthModal() { document.getElementById('authModal').classList.remove('hidden'); }
+        function closeAuthModal() { document.getElementById('authModal').classList.add('hidden'); }
+
+        /* ============================================================
+           ACTIONS: CLEAR / COPY / EXPORT
+           ============================================================ */
+        function clearOutput() {
+            document.getElementById('skills').innerHTML = '';
+            document.getElementById('test').innerHTML = '';
+            document.getElementById('results').innerHTML = '';
             document.getElementById('submit-section').classList.add('hidden');
             document.getElementById('results').classList.add('hidden');
-            document.getElementById('skills').innerHTML = "";
-            
-            // Reset file upload area
-            resetFileUpload();
-            
-            // Reset the upload button
-            const uploadButton = document.getElementById('uploadButton');
-            uploadButton.className = "bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-6 rounded-lg transition-colors shadow-md hover:shadow-lg w-full sm:w-auto";
-            uploadButton.innerHTML = "Generate Test";
-            uploadButton.disabled = false;
+            document.getElementById('outputPanel').classList.add('hidden');
+            currentTestId = null;
+            testQuestions = [];
+            correctAnswers = [];
+            resetTimer();
         }
-        
-        // Reset file upload area
+        function copyResult() {
+            if (!testQuestions.length && !document.getElementById('skills').textContent.trim()) { showToast('Nothing to copy yet — run the tool first.', 'info'); return; }
+            var lines = [];
+            var skillsEl = document.getElementById('skills');
+            if (skillsEl.textContent.trim()) lines.push('EXTRACTED SKILLS:\n' + Array.from(skillsEl.querySelectorAll('span')).map(function(s){return s.textContent}).join(', '));
+            testQuestions.forEach(function(q, i) {
+                lines.push('Q' + (i+1) + ': ' + q.question);
+                q.options.forEach(function(o, j) { lines.push('  ' + String.fromCharCode(65+j) + '. ' + o); });
+            });
+            navigator.clipboard.writeText(lines.join('\n')).then(function() { showToast('Copied to clipboard!', 'success', 3000); }).catch(function() { showToast('Copy failed — try selecting the text manually.', 'error'); });
+        }
+        function exportJSON() {
+            if (!testQuestions.length && !document.getElementById('skills').textContent.trim()) { showToast('Nothing to export — run the tool first.', 'info'); return; }
+            var skills = Array.from(document.getElementById('skills').querySelectorAll('span')).map(function(s){return s.textContent});
+            var data = { generated_at: new Date().toISOString(), source: 'SkillSift AI', skills: skills, questions: testQuestions.map(function(q,i){ return {index:i+1, question:q.question, options:q.options}; }) };
+            var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'skillshift-assessment.json'; a.click();
+            showToast('JSON exported!', 'success', 3000);
+        }
+
+        /* ============================================================
+           CORE: UPLOAD / SAMPLE / DISPLAY / TIMER / SECURITY
+           ============================================================ */
+        function formatTime(s) { return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); }
+        function startTimer() {
+            var gb = document.getElementById('generateBtn');
+            gb.innerHTML = '<svg class="h-5 w-5 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Time: <span id="timer-display">' + formatTime(timeRemaining) + '</span>';
+            gb.disabled = true; gb.classList.add('pointer-events-none');
+            timerInterval = setInterval(function() {
+                timeRemaining--;
+                var td = document.getElementById('timer-display');
+                if (td) td.textContent = formatTime(timeRemaining);
+                if (timeRemaining <= 60) { gb.classList.remove('from-primary-600','to-primary-700'); gb.classList.add('from-red-500','to-red-600'); }
+                if (timeRemaining <= 0) { stopTimer(); submitTest(); }
+            }, 1000);
+        }
+        function stopTimer() { clearInterval(timerInterval); }
+        function resetTimer() {
+            stopTimer();
+            timeRemaining = 600;
+            var gb = document.getElementById('generateBtn');
+            gb.classList.remove('from-red-500','to-red-600','pointer-events-none');
+            gb.classList.add('from-primary-600','to-primary-700');
+            var disabled = usageData.remaining <= 0;
+            gb.disabled = disabled; gb.innerHTML = 'Generate Assessment';
+        }
+
+        function updateFileName() {
+            var fi = document.getElementById('resumeFile');
+            var sf = document.getElementById('selectedFile');
+            var ua = document.getElementById('uploadArea');
+            if (fi.files.length > 0) {
+                ua.classList.add('active');
+                ua.classList.remove('ripple-effect');
+                void ua.offsetWidth;
+                ua.classList.add('ripple-effect');
+                sf.textContent = fi.files[0].name; sf.classList.remove('hidden');
+                document.getElementById('uploadIcon').innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 13l4 4L19 7"/></svg>';
+            } else {
+                ua.classList.remove('active');
+                sf.classList.add('hidden');
+            }
+        }
         function resetFileUpload() {
-            const fileInput = document.getElementById('resumeFile');
-            const selectedFileElement = document.getElementById('selectedFile');
-            const uploadArea = document.getElementById('uploadArea');
-            
-            // Clear file input
-            fileInput.value = '';
-            
-            // Reset upload area styling
-            uploadArea.classList.remove('border-primary-500');
-            uploadArea.classList.remove('bg-primary-50');
-            
-            // Hide selected file text
-            selectedFileElement.classList.add('hidden');
-            
-            // Reset icon
-            const iconContainer = uploadArea.querySelector('svg').parentElement;
-            iconContainer.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-            `;
+            var fi = document.getElementById('resumeFile'); fi.value = '';
+            document.getElementById('selectedFile').classList.add('hidden');
+            var ua = document.getElementById('uploadArea'); ua.classList.remove('active');
+            document.getElementById('uploadIcon').innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>';
         }
 
         async function uploadResume() {
-            const fileInput = document.getElementById('resumeFile');
-            if (fileInput.files.length === 0) {
-                alert("Please select a file to upload.");
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append("file", fileInput.files[0]);
-
-            document.getElementById("loading").classList.remove("hidden");
-            document.getElementById("skills").innerHTML = "";
-            document.getElementById("test").innerHTML = "";
-            document.getElementById("submit-section").classList.add("hidden");
-            document.getElementById("results").classList.add("hidden");
-
+            var fi = document.getElementById('resumeFile');
+            if (fi.files.length === 0) { showToast('Please select a file to upload.', 'info'); return; }
+            var fd = new FormData(); fd.append('file', fi.files[0]);
+            fd.append('question_count', document.getElementById('questionCount').value);
+            setGenerating(true); document.getElementById('loading').classList.remove('hidden'); startProgress();
+            document.getElementById('skills').innerHTML = ''; document.getElementById('test').innerHTML = '';
+            document.getElementById('submit-section').classList.add('hidden'); document.getElementById('results').classList.add('hidden');
+            document.getElementById('outputPanel').classList.remove('hidden');
             try {
-                const response = await fetch("/upload_resume", {
-                    method: "POST",
-                    body: formData
-                });
-                const result = await response.json();
-                document.getElementById("loading").classList.add("hidden");
-                
-                if (response.ok) {
-                    // Display skills
-                    let skillsHtml = `
-                        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                            <h3 class="text-xl font-semibold text-gray-800 mb-2">Extracted Skills</h3>
-                            <div class="flex flex-wrap gap-2">
-                    `;
-                    
-                    result.skills.forEach(skill => {
-                        skillsHtml += `<span class="bg-primary-100 text-primary-800 text-sm font-medium px-3 py-1 rounded-full">${skill}</span>`;
-                    });
-                    
-                    skillsHtml += `
-                            </div>
-                        </div>
-                    `;
-                    document.getElementById("skills").innerHTML = skillsHtml;
-                    
-                    // Store test questions and correct answers
-                    testQuestions = result.test;
-                    correctAnswers = result.answers;
-                    
-                    // Generate test HTML
-                    let testHtml = `
-                        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-                            <div class="flex">
-                                <div class="flex-shrink-0">
-                                    <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-                                    </svg>
-                                </div>
-                                <div class="ml-3">
-                                    <p class="text-sm text-yellow-700">
-                                        <strong>Important:</strong> During the test, please remain in this window. Copying content, right-clicking, or switching tabs will result in warnings. After 3 warnings, your test will be canceled. You have 10 minutes to complete the assessment.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Technical Assessment</h3>
-                    `;
-                    
-                    testQuestions.forEach((q, index) => {
-                        testHtml += `
-                            <div class="mb-8 p-5 bg-white border border-gray-200 rounded-lg shadow-sm">
-                                <p class="font-semibold text-gray-800 mb-3">Q${index + 1}: ${q.question}</p>
-                                <div class="space-y-2 pl-1">
-                        `;
-                        
-                        q.options.forEach((opt, optIndex) => {
-                            testHtml += `
-                                <div class="flex items-center">
-                                    <input type="radio" id="q${index}_opt${optIndex}" name="q${index}" value="${optIndex}"
-                                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300">
-                                    <label for="q${index}_opt${optIndex}" class="ml-2 text-gray-700">${opt}</label>
-                                </div>
-                            `;
-                        });
-                        
-                        testHtml += `
-                                </div>
-                            </div>
-                        `;
-                    });
-                    
-                    document.getElementById("test").innerHTML = testHtml;
-                    document.getElementById("submit-section").classList.remove("hidden");
-                    
-                    // Start security monitoring and timer
-                    timeRemaining = 600; // 10 minutes in seconds
-                    setupSecurityMeasures();
-                    startTimer();
-                } else {
-                    alert("Failed to process resume. Please try again.");
-                }
-            } catch (error) {
-                console.error("Error uploading file:", error);
-                alert("An error occurred. Please try again.");
-                document.getElementById("loading").classList.add("hidden");
-            }
+                var r = await fetch('/upload_resume', { method:'POST', body:fd, headers:{'X-Anon-Key':getAnonKey()} });
+                var res = await r.json(); stopProgress();
+                if (r.ok) { showToast('Assessment generated!','success',3000); displayTest(res); if (res.usage) updateUsageUI(res.usage); addHistory({source:'upload',fileName:fi.files[0].name,skillsCount:res.skills.length,questionsCount:res.test.length,time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}); }
+                else { showToast(res.error || 'Failed to process resume.','error'); document.getElementById('outputPanel').classList.add('hidden'); }
+            } catch(e) { stopProgress(); showToast('An error occurred. Please try again.','error'); document.getElementById('outputPanel').classList.add('hidden'); }
+            finally { setGenerating(false); if (res && res.usage && res.usage.remaining <= 0) { document.getElementById('generateBtn').disabled = true; document.getElementById('sampleBtn').disabled = true; } }
         }
 
-        function submitTest() {
-            // Stop the timer
-            stopTimer();
-            
-            // Check if all questions are answered
-            const totalQuestions = testQuestions.length;
-            let answeredQuestions = 0;
-            let score = 0;
+        async function loadSampleDemo() {
+            setGenerating(true); document.getElementById('loading').classList.remove('hidden'); startProgress();
+            document.getElementById('skills').innerHTML = ''; document.getElementById('test').innerHTML = '';
+            document.getElementById('submit-section').classList.add('hidden'); document.getElementById('results').classList.add('hidden');
+            document.getElementById('outputPanel').classList.remove('hidden');
+            resetFileUpload();
+            try {
+                var r = await fetch('/sample_demo', { method:'POST', headers:{'Content-Type':'application/json','X-Anon-Key':getAnonKey()} });
+                var res = await r.json(); stopProgress();
+                if (r.ok) { showToast('Sample assessment generated!','success',3000); displayTest(res); if (res.usage) updateUsageUI(res.usage); addHistory({source:'sample',fileName:'Sample Resume',skillsCount:res.skills.length,questionsCount:res.test.length,time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}); }
+                else { showToast(res.error || 'Could not run the sample demo.','error'); document.getElementById('outputPanel').classList.add('hidden'); }
+            } catch(e) { stopProgress(); showToast('An error occurred. Please try again.','error'); document.getElementById('outputPanel').classList.add('hidden'); }
+            finally { setGenerating(false); if (res && res.usage && res.usage.remaining <= 0) { document.getElementById('generateBtn').disabled = true; document.getElementById('sampleBtn').disabled = true; } }
+        }
 
-            for (let i = 0; i < totalQuestions; i++) {
-                const selectedOption = document.querySelector(`input[name="q${i}"]:checked`);
-                if (selectedOption) {
-                    answeredQuestions++;
-                    
-                    // Check if answer is correct
-                    const selectedIndex = parseInt(selectedOption.value);
-                    if (correctAnswers[i] === selectedIndex) {
-                        score++;
-                    }
-                }
-            }
+        function displayTest(result) {
+            // Skills section with enhanced tags
+            var sh = '<div class="mb-4"><h3 class="font-bold text-sm mb-3 text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>Extracted Skills (' + result.skills.length + ')</h3><div class="flex flex-wrap gap-2">';
+            result.skills.forEach(function(sk) { sh += '<span class="skill-tag bg-gradient-to-r from-primary-100 to-violet-100 dark:from-primary-900/40 dark:to-violet-900/40 text-primary-800 dark:text-primary-200 text-xs font-medium px-3 py-1.5 rounded-full border border-primary-200/50 dark:border-primary-800/50">' + escapeHtml(sk) + '</span>'; });
+            sh += '</div></div>';
+            document.getElementById('skills').innerHTML = sh;
+            testQuestions = result.test;
+            currentTestId = result.test_id || null;
 
-            if (answeredQuestions < totalQuestions && timeRemaining > 0) {
-                const unanswered = totalQuestions - answeredQuestions;
-                if (!confirm(`You have ${unanswered} unanswered question(s). Do you want to submit anyway?`)) {
-                    // Restart the timer if they cancel submission
-                    startTimer();
-                    return;
-                }
-            }
-
-            // Calculate percentage
-            const percentage = Math.round((score / totalQuestions) * 100);
-            
-            // Get color based on score
-            let scoreColor = "bg-red-500";
-            if (percentage >= 90) {
-                scoreColor = "bg-green-500";
-            } else if (percentage >= 70) {
-                scoreColor = "bg-blue-500";
-            } else if (percentage >= 50) {
-                scoreColor = "bg-yellow-500";
-            }
-            
-            // Display results
-            const resultsDiv = document.getElementById("results");
-            resultsDiv.innerHTML = `
-                <div class="bg-white rounded-lg shadow-md p-6 mt-8">
-                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-4">Test Results</h3>
-                    <div class="flex justify-center mb-6">
-                        <div class="relative">
-                            <div class="${scoreColor} text-white rounded-full h-28 w-28 flex items-center justify-center">
-                                <span class="text-3xl font-bold">${percentage}%</span>
-                            </div>
-                        </div>
-                    </div>
-                    <p class="text-center text-lg mb-4">You answered <span class="font-semibold">${score}</span> out of <span class="font-semibold">${totalQuestions}</span> questions correctly.</p>
-                    <div class="p-4 rounded-lg ${percentage >= 70 ? 'bg-green-50 text-green-800' : percentage >= 50 ? 'bg-yellow-50 text-yellow-800' : 'bg-red-50 text-red-800'}">
-                        ${getFeedbackMessage(percentage)}
-                    </div>
-                </div>
-            `;
-            
-            // Highlight correct and incorrect answers
-            for (let i = 0; i < totalQuestions; i++) {
-                const selectedOption = document.querySelector(`input[name="q${i}"]:checked`);
-                const correctOption = document.getElementById(`q${i}_opt${correctAnswers[i]}`);
-                
-                if (selectedOption) {
-                    if (parseInt(selectedOption.value) === correctAnswers[i]) {
-                        // Correct answer
-                        selectedOption.parentElement.classList.add("bg-green-100");
-                        selectedOption.parentElement.classList.add("rounded");
-                        selectedOption.parentElement.classList.add("p-2");
-                        selectedOption.parentElement.classList.add("-ml-2");
-                    } else {
-                        // Incorrect answer
-                        selectedOption.parentElement.classList.add("bg-red-100");
-                        selectedOption.parentElement.classList.add("rounded");
-                        selectedOption.parentElement.classList.add("p-2");
-                        selectedOption.parentElement.classList.add("-ml-2");
-                        
-                        correctOption.parentElement.classList.add("bg-green-100");
-                        correctOption.parentElement.classList.add("rounded");
-                        correctOption.parentElement.classList.add("p-2");
-                        correctOption.parentElement.classList.add("-ml-2");
-                    }
-                } else {
-                    // Unanswered question
-                    correctOption.parentElement.classList.add("bg-green-100");
-                    correctOption.parentElement.classList.add("rounded");
-                    correctOption.parentElement.classList.add("p-2");
-                    correctOption.parentElement.classList.add("-ml-2");
-                }
-            }
-            
-            resultsDiv.classList.remove("hidden");
-            
-            // Disable all inputs and the submit button
-            document.querySelectorAll('#test input[type="radio"]').forEach(input => {
-                input.disabled = true;
+            // Test section with enhanced question cards
+            var th = '<div class="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 mb-5 text-sm text-amber-700 dark:text-amber-300 flex items-center gap-2"><svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span><strong>Demo mode:</strong> proctoring is disabled in this public demo. You have 10 minutes.</span></div><h3 class="font-bold text-sm mb-4 text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>Technical Assessment</h3>';
+            testQuestions.forEach(function(q, i) {
+                var delay = Math.min(i * 80, 600);
+                th += '<div class="mb-5 p-5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl question-card hover:shadow-md transition-shadow" style="animation-delay:' + delay + 'ms"><div class="flex items-start gap-3 mb-3"><span class="q-badge">Q' + (i+1) + '</span><p class="font-semibold text-sm leading-relaxed pt-0.5">' + escapeHtml(q.question) + '</p></div><div class="space-y-2 pl-0 sm:pl-10">';
+                q.options.forEach(function(o, j) {
+                    th += '<label class="option-label flex items-center gap-3 text-sm"><input type="radio" id="q'+i+'_opt'+j+'" name="q'+i+'" value="'+j+'" class="custom-radio"><span class="text-slate-700 dark:text-slate-300">' + escapeHtml(o) + '</span></label>';
+                });
+                th += '</div></div>';
             });
-            document.getElementById("submit-test").disabled = true;
-            document.getElementById("submit-test").classList.add("opacity-50", "cursor-not-allowed");
-            
-            // Reset the upload button
-            const uploadButton = document.getElementById('uploadButton');
-            uploadButton.className = "bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-6 rounded-lg transition-colors shadow-md hover:shadow-lg w-full sm:w-auto";
-            uploadButton.innerHTML = "Generate Test";
-            uploadButton.disabled = false;
-            
-            // Remove security measures
+            document.getElementById('test').innerHTML = th;
+            document.getElementById('submit-section').classList.remove('hidden');
+            timeRemaining = 600;
+            testInProgress = true;
+            startTimer();
+            document.getElementById('outputPanel').scrollIntoView({ behavior:'smooth', block:'start' });
+        }
+
+        /* security (demo mode — labels only, no enforcement) */
+        function preventDefaultAction(e) { if (testInProgress) { e.preventDefault(); showWarning("This action is restricted in proctored mode (disabled in demo)."); } }
+        function windowBlurred() { if (testInProgress) { hasFocus = false; document.title = "RETURN TO TEST"; showWarning("Tab switch detected (proctoring off in demo)."); } }
+        function windowFocused() { if (testInProgress) { hasFocus = true; document.title = originalTitle; } }
+        function visibilityChanged() { if (testInProgress && document.visibilityState === 'hidden') showWarning("Tab switch detected (proctoring off in demo)."); }
+        function checkVisibilityState() { if (testInProgress && !hasFocus) document.title = "RETURN TO TEST"; }
+        function preventKeyboardShortcuts(e) { if (testInProgress && ((e.ctrlKey||e.metaKey) && 'cvpas'.indexOf(e.key)>=0)) { e.preventDefault(); showWarning("Keyboard shortcut blocked (proctoring off in demo)."); } }
+
+        function showWarning(msg) {
+            if (!testInProgress) return;
+            warningCount++;
+            document.getElementById('warningMessage').textContent = msg;
+            document.getElementById('warningCount').textContent = warningCount;
+            document.getElementById('warningModal').classList.remove('hidden');
+            if (warningCount >= 3) cancelTest();
+        }
+        function closeWarningModal() { document.getElementById('warningModal').classList.add('hidden'); }
+        function cancelTest() { closeWarningModal(); document.getElementById('canceledModal').classList.remove('hidden'); removeSecurityMeasures(); stopTimer(); }
+        function removeSecurityMeasures() {
+            testInProgress = false;
+            document.removeEventListener('contextmenu', preventDefaultAction);
+            document.removeEventListener('copy', preventDefaultAction);
+            document.removeEventListener('cut', preventDefaultAction);
+            window.removeEventListener('blur', windowBlurred);
+            window.removeEventListener('focus', windowFocused);
+            document.removeEventListener('visibilitychange', visibilityChanged);
+            clearInterval(visibilityInterval);
+            document.title = originalTitle;
+        }
+        function resetTest() {
+            document.getElementById('canceledModal').classList.add('hidden');
+            clearOutput(); currentTestId = null; correctAnswers = []; warningCount = 0;
+            resetFileUpload(); resetTimer();
+        }
+
+        /* SUBMIT (server-side scoring) with enhanced results */
+        async function submitTest() {
+            stopTimer();
+            var total = testQuestions.length, selected = {}, answered = 0;
+            for (var i = 0; i < total; i++) {
+                var ch = document.querySelector('input[name="q'+i+'"]:checked');
+                if (ch) { selected[i] = parseInt(ch.value); answered++; }
+            }
+            if (answered < total && timeRemaining > 0) {
+                var u = total - answered;
+                if (!confirm(u + ' unanswered question(s). Submit anyway?')) { startTimer(); return; }
+            }
+            var sb = document.getElementById('submit-test');
+            sb.disabled = true; sb.textContent = 'Scoring...';
+            try {
+                var r = await fetch('/submit_test', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({test_id:currentTestId,selected:selected}) });
+                var res = await r.json();
+                if (!r.ok) { showToast(res.error || 'Submission failed.','error'); sb.disabled = false; sb.textContent = 'Submit Test'; return; }
+                correctAnswers = res.answers || [];
+                renderTestResults(res.score, res.total, res.percentage);
+            } catch(e) { showToast('Scoring error.','error'); sb.disabled = false; sb.textContent = 'Submit Test'; }
+        }
+
+        function renderTestResults(score, total, pct) {
+            var gradClass = 'score-gradient-low';
+            var ringColor = '#ef4444';
+            if (pct >= 90) { gradClass = 'score-gradient-excellent'; ringColor = '#10b981'; }
+            else if (pct >= 70) { gradClass = 'score-gradient-good'; ringColor = '#3b82f6'; }
+            else if (pct >= 50) { gradClass = 'score-gradient-ok'; ringColor = '#f59e0b'; }
+
+            var fb = pct >= 90 ? 'Excellent!' : pct >= 70 ? 'Good job!' : pct >= 50 ? 'Not bad — room to improve.' : 'Review these concepts more closely.';
+
+            // Calculate stroke dashoffset for the ring
+            var circumference = 283; // 2 * PI * 45
+            var dashoffset = circumference - (pct / 100) * circumference;
+
+            var html = '<div class="rounded-2xl p-8 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">';
+            html += '<div class="flex flex-col items-center mb-6">';
+            // SVG ring + score
+            html += '<div class="relative h-32 w-32 mb-3">';
+            html += '<svg class="h-32 w-32" viewBox="0 0 100 100"><circle class="score-ring-bg" cx="50" cy="50" r="45" fill="none" stroke-width="6"/><circle class="score-ring-fill" cx="50" cy="50" r="45" fill="none" stroke="' + ringColor + '" stroke-width="6" stroke-linecap="round" stroke-dasharray="283" stroke-dashoffset="' + dashoffset + '" style="transform:rotate(-90deg);transform-origin:center"/></svg>';
+            html += '<div class="absolute inset-0 flex flex-col items-center justify-center"><span id="scoreCounter" class="text-4xl font-extrabold" data-target="' + pct + '">0</span><span class="text-xs text-slate-400 font-medium">%</span></div>';
+            html += '</div>';
+            html += '</div>';
+            html += '<p class="text-center font-semibold text-lg mb-1">' + score + ' of ' + total + ' correct</p>';
+            html += '<p class="text-center text-sm text-slate-500 dark:text-slate-400">' + fb + '</p>';
+
+            // Confetti for good scores
+            if (pct >= 70) {
+                html += '<div id="confetti-container" class="relative h-0 overflow-visible flex justify-center">';
+                var colors = ['#0ea5e9','#8b5cf6','#ec4899','#10b981','#f59e0b'];
+                for (var c = 0; c < 20; c++) {
+                    var color = colors[c % colors.length];
+                    var left = Math.random() * 200 - 100;
+                    var delay = Math.random() * 0.8;
+                    var size = 6 + Math.random() * 6;
+                    html += '<div class="confetti-particle" style="background:' + color + ';left:' + left + 'px;animation-delay:' + delay + 's;width:' + size + 'px;height:' + size + 'px;border-radius:' + (Math.random()>0.5?'50%':'2px') + '"></div>';
+                }
+                html += '</div>';
+            }
+
+            html += '</div>';
+            document.getElementById('results').innerHTML = html;
+
+            // Count-up animation
+            var counter = document.getElementById('scoreCounter');
+            if (counter) {
+                var target = parseInt(counter.dataset.target);
+                var current = 0;
+                var step = Math.max(1, Math.floor(target / 40));
+                var countUp = setInterval(function() {
+                    current += step;
+                    if (current >= target) { current = target; clearInterval(countUp); }
+                    counter.textContent = current;
+                }, 25);
+            }
+
+            // Mark correct/incorrect answers with icons
+            for (var i = 0; i < total; i++) {
+                var ch = document.querySelector('input[name="q'+i+'"]:checked');
+                var co = document.getElementById('q'+i+'_opt'+correctAnswers[i]);
+                var pe = ch ? ch.closest('.option-label') : null;
+                var pce = co ? co.closest('.option-label') : null;
+                if (ch && parseInt(ch.value) === correctAnswers[i]) {
+                    if(pe) { pe.classList.add('bg-emerald-50','dark:bg-emerald-950/40','border-emerald-300','dark:border-emerald-800','answer-correct'); }
+                } else {
+                    if(pe) { pe.classList.add('bg-red-50','dark:bg-red-950/40','border-red-300','dark:border-red-800','answer-incorrect'); }
+                    if(pce) { pce.classList.add('bg-emerald-50','dark:bg-emerald-950/40','border-emerald-300','dark:border-emerald-800','answer-correct'); }
+                }
+                if (!ch && pce) { pce.classList.add('bg-emerald-50','dark:bg-emerald-950/40','border-emerald-300','dark:border-emerald-800','answer-correct'); }
+            }
+            document.getElementById('results').classList.remove('hidden');
+            document.querySelectorAll('#test input[type="radio"]').forEach(function(r){ r.disabled = true; });
+            document.getElementById('submit-section').classList.add('hidden');
             removeSecurityMeasures();
         }
 
-        function getFeedbackMessage(percentage) {
-            if (percentage >= 90) {
-                return "Excellent! You have a strong understanding of these technical concepts.";
-            } else if (percentage >= 70) {
-                return "Good job! You have a solid grasp of most concepts.";
-            } else if (percentage >= 50) {
-                return "Not bad. There's room for improvement in some areas.";
+        /* ============================================================
+           SCROLL-TO-TOP + MOBILE CTA
+           ============================================================ */
+        function handleScroll() {
+            var btn = document.getElementById('scrollTopBtn');
+            var cta = document.getElementById('mobileCta');
+            if (window.scrollY > 400) {
+                btn.classList.remove('hidden');
             } else {
-                return "You might want to review these concepts in more depth.";
+                btn.classList.add('hidden');
+            }
+            // Show mobile CTA when scrolled past upload area
+            if (cta && window.innerWidth < 1024) {
+                if (window.scrollY > 300) {
+                    cta.classList.remove('hidden');
+                } else {
+                    cta.classList.add('hidden');
+                }
+            }
+            // Subtle parallax on the hero blobs
+            var blobs = document.getElementById('heroBlobs');
+            if (blobs) {
+                if (window.scrollY > 0 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                    blobs.style.transform = 'translate3d(0,' + (window.scrollY * 0.12) + 'px,0)';
+                } else {
+                    blobs.style.transform = '';
+                }
+            }
+        }
+        function scrollToTop() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        /* ============================================================
+           DRAG AND DROP ENHANCEMENT
+           ============================================================ */
+        function setupDragDrop() {
+            var ua = document.getElementById('uploadArea');
+            if (!ua) return;
+            ua.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                ua.classList.add('active');
+                ua.style.transform = 'scale(1.02)';
+            });
+            ua.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                if (!document.getElementById('resumeFile').files.length) {
+                    ua.classList.remove('active');
+                }
+                ua.style.transform = '';
+            });
+            ua.addEventListener('drop', function(e) {
+                e.preventDefault();
+                ua.style.transform = '';
+                var fi = document.getElementById('resumeFile');
+                if (e.dataTransfer.files.length) {
+                    fi.files = e.dataTransfer.files;
+                    updateFileName();
+                }
+            });
+        }
+
+        /* ============================================================
+           SIDEBAR ACCORDION (mobile only)
+           ============================================================ */
+        function setupSidebarAccordion() {
+            var toggles = document.querySelectorAll('.acc-toggle');
+            toggles.forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var card = btn.closest('[data-acc]');
+                    if (!card || window.innerWidth >= 1024) return;
+                    card.classList.toggle('acc-collapsed');
+                });
+            });
+            // On mobile, collapse the "How it works" and "Recent Runs" cards by default
+            if (window.innerWidth < 1024) {
+                document.querySelectorAll('[data-acc-collapse-default]').forEach(function(card) {
+                    card.classList.add('acc-collapsed');
+                });
             }
         }
 
-        // Initialize everything when the page loads
+        /* ============================================================
+           INIT
+           ============================================================ */
         document.addEventListener('DOMContentLoaded', function() {
-            // Set up file input handling
+            document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+            document.getElementById('signInBtn').addEventListener('click', openAuthModal);
+            document.getElementById('signUpBtn').addEventListener('click', openAuthModal);
+            document.getElementById('infoBtn').addEventListener('click', openInfoModal);
             document.getElementById('resumeFile').addEventListener('change', updateFileName);
-            
-            // Set up upload button click handler
-            document.getElementById('uploadButton').addEventListener('click', uploadResume);
-            
-            // Set up submit button click handler
+            document.getElementById('generateBtn').addEventListener('click', uploadResume);
+            document.getElementById('sampleBtn').addEventListener('click', loadSampleDemo);
             document.getElementById('submit-test').addEventListener('click', submitTest);
+            document.getElementById('copyBtn').addEventListener('click', copyResult);
+            document.getElementById('exportBtn').addEventListener('click', exportJSON);
+            document.getElementById('clearBtn').addEventListener('click', clearOutput);
+            document.getElementById('clearHistoryBtn').addEventListener('click', clearHistory);
+            document.getElementById('scrollTopBtn').addEventListener('click', scrollToTop);
+            // Mobile CTA mirrors the main generate button
+            document.getElementById('mobileGenerateBtn').addEventListener('click', function() {
+                var fi = document.getElementById('resumeFile');
+                if (fi.files.length > 0) { uploadResume(); }
+                else { loadSampleDemo(); }
+            });
+            window.addEventListener('scroll', handleScroll, { passive: true });
+            fetchUsage();
+            renderHistory();
+            setupDragDrop();
+            setupSidebarAccordion();
         });
+    </script>
+    <script>
+        (function() {
+            // Sync the right-pane empty state with the output panel
+            var op = document.getElementById('outputPanel');
+            var oe = document.getElementById('outputEmpty');
+            function syncEmpty() { if (oe && op) oe.classList.toggle('hidden', !op.classList.contains('hidden')); }
+            if (op && oe && window.MutationObserver) {
+                var mo = new MutationObserver(syncEmpty);
+                mo.observe(op, { attributes: true, attributeFilter: ['class'] });
+            }
+            syncEmpty();
+            // ⌘K / Ctrl+K opens the resume file picker
+            document.addEventListener('keydown', function(e) {
+                if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+                    e.preventDefault();
+                    var fi = document.getElementById('resumeFile');
+                    if (fi) fi.click();
+                }
+            });
+            // T toggles theme when not typing in a field
+            document.addEventListener('keydown', function(e) {
+                var tag = (e.target && e.target.tagName) || '';
+                if (e.key.toLowerCase() === 't' && !e.metaKey && !e.ctrlKey && !e.altKey && tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') {
+                    var tt = document.getElementById('themeToggle');
+                    if (tt) tt.click();
+                }
+            });
+        })();
     </script>
 </body>
 </html>

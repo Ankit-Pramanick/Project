@@ -1,0 +1,13 @@
+{
+  "name": "skillsift-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SkillSift AI - portfolio demo. Dev tooling for the Tailwind CSS build.",
+  "scripts": {
+    "build:css": "tailwindcss -i static/tailwind.css -o static/styles.css --minify",
+    "watch:css": "tailwindcss -i static/tailwind.css -o static/styles.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
+  }
+}

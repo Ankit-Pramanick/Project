@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB upload cap
 app.config['MAX_FORM_MEMORY_SIZE'] = 1 * 1024 * 1024
 

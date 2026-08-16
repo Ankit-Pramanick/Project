@@ -4,8 +4,9 @@
   "private": true,
   "description": "SkillSift AI - portfolio demo. Dev tooling for the Tailwind CSS build.",
   "scripts": {
-    "build:css": "tailwindcss -i static/tailwind.css -o static/styles.css --minify",
-    "watch:css": "tailwindcss -i static/tailwind.css -o static/styles.css --watch"
+    "build:css": "tailwindcss -c ../static/tailwind.config.js -i ../static/tailwind.css -o ../static/styles.css --minify",
+    "watch:css": "tailwindcss -c ../static/tailwind.config.js -i ../static/tailwind.css -o ../static/styles.css --watch",
+    "build": "npm run build:css"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.17"

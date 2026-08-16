@@ -653,7 +653,7 @@
             currentTestId = result.test_id || null;
 
             // Test section with enhanced question cards
-            var th = '<div class="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 mb-5 text-sm text-amber-700 dark:text-amber-300 flex items-center gap-2"><svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span><strong>Demo mode:</strong> proctoring is disabled in this public demo. You have 10 minutes.</span></div><h3 class="font-bold text-sm mb-4 text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>Technical Assessment</h3>';
+            var th = '<h3 class="font-bold text-sm mb-4 text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>Technical Assessment</h3>';
             testQuestions.forEach(function(q, i) {
                 var delay = Math.min(i * 80, 600);
                 th += '<div class="mb-5 p-5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl question-card hover:shadow-md transition-shadow" style="animation-delay:' + delay + 'ms"><div class="flex items-start gap-3 mb-3"><span class="q-badge">Q' + (i+1) + '</span><p class="font-semibold text-sm leading-relaxed pt-0.5">' + escapeHtml(q.question) + '</p></div><div class="space-y-2 pl-0 sm:pl-10">';
@@ -670,13 +670,13 @@
             document.getElementById('outputPanel').scrollIntoView({ behavior:'smooth', block:'start' });
         }
 
-        /* security (demo mode — labels only, no enforcement) */
-        function preventDefaultAction(e) { if (testInProgress) { e.preventDefault(); showWarning("This action is restricted in proctored mode (disabled in demo)."); } }
-        function windowBlurred() { if (testInProgress) { hasFocus = false; document.title = "RETURN TO TEST"; showWarning("Tab switch detected (proctoring off in demo)."); } }
+        /* security — proctoring mode (enforced) */
+        function preventDefaultAction(e) { if (testInProgress) { e.preventDefault(); showWarning("This action is restricted during the assessment."); } }
+        function windowBlurred() { if (testInProgress) { hasFocus = false; document.title = "RETURN TO TEST"; showWarning("Tab switch detected — focusing away is not allowed."); } }
         function windowFocused() { if (testInProgress) { hasFocus = true; document.title = originalTitle; } }
-        function visibilityChanged() { if (testInProgress && document.visibilityState === 'hidden') showWarning("Tab switch detected (proctoring off in demo)."); }
+        function visibilityChanged() { if (testInProgress && document.visibilityState === 'hidden') showWarning("Tab switch detected — focusing away is not allowed."); }
         function checkVisibilityState() { if (testInProgress && !hasFocus) document.title = "RETURN TO TEST"; }
-        function preventKeyboardShortcuts(e) { if (testInProgress && ((e.ctrlKey||e.metaKey) && 'cvpas'.indexOf(e.key)>=0)) { e.preventDefault(); showWarning("Keyboard shortcut blocked (proctoring off in demo)."); } }
+        function preventKeyboardShortcuts(e) { if (testInProgress && ((e.ctrlKey||e.metaKey) && 'cvpas'.indexOf(e.key)>=0)) { e.preventDefault(); showWarning("Keyboard shortcuts are blocked during the assessment."); } }
 
         function showWarning(msg) {
             if (!testInProgress) return;

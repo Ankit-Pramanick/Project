@@ -93,10 +93,10 @@ PREFERRED_MODEL_KEYWORDS = [
     'gemini-2.5-flash-lite',
     'gemini-2.0-flash-lite',
     'gemini-2.5-pro',
-    'gemini-3.5-flash',
-    'gemini-3.6-flash',
-    'gemini-3.1-flash-lite',
-    'gemini-3.1-pro-preview',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-pro',
+    'gemini-1.5-pro-latest',
 ]
 
 def _build_model_list():
@@ -137,32 +137,40 @@ def _build_model_list():
 
 MODEL_LIST = _build_model_list()
 
-def generate_with_fallback(prompt, max_retries=2, initial_delay=10):
-    """Try to generate content, falling back across models on quota errors."""
+def _try_model_names(model_name):
+    """Try both full and short model name formats."""
+    candidates = [model_name]
+    if model_name.startswith('models/'):
+        candidates.append(model_name.replace('models/', ''))
+    else:
+        candidates.append('models/' + model_name)
+    return candidates
+
+def generate_with_fallback(prompt, max_retries=1):
+    """Try to generate content, falling back across models on quota/404 errors.
+    No blocking sleeps - immediately try next model on any error."""
     last_error = None
     for model_name in MODEL_LIST:
-        model = genai.GenerativeModel(model_name)
         for attempt in range(max_retries):
-            try:
-                response = model.generate_content(prompt)
-                return response  # success
-            except Exception as e:
-                last_error = e
-                err_str = str(e)
-                if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str or 'quota' in err_str.lower():
-                    if attempt < max_retries - 1:
-                        wait = initial_delay * (attempt + 1)
-                        print(f"Rate limited on {model_name}, retrying in {wait}s (attempt {attempt+1})...")
-                        time.sleep(wait)
+            for candidate_name in _try_model_names(model_name):
+                try:
+                    model = genai.GenerativeModel(candidate_name)
+                    response = model.generate_content(prompt)
+                    print(f"Success with model: {candidate_name}")
+                    return response
+                except Exception as e:
+                    last_error = e
+                    err_str = str(e)
+                    if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str or 'quota' in err_str.lower():
+                        print(f"Quota exhausted for {candidate_name}, trying next model...")
+                    elif '404' in err_str or 'not found' in err_str.lower():
+                        print(f"Model {candidate_name} not found, trying next...")
                     else:
-                        print(f"Quota exhausted for {model_name}, trying next model...")
-                        break  # move to next model
-                elif '404' in err_str or 'not found' in err_str.lower():
-                    print(f"Model {model_name} not found, skipping...")
-                    break  # move to next model
-                else:
-                    print(f"Unexpected error with {model_name}: {e}")
-                    break  # move to next model
+                        print(f"Error with {candidate_name}: {e}")
+                    break  # Try next model candidate
+            # Small delay only if we have retries left, but don't block worker
+            if attempt < max_retries - 1:
+                pass  # No sleep - move immediately to next model
 
     raise Exception(f"All models exhausted. Last error: {last_error}")
 

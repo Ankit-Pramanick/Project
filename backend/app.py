@@ -120,17 +120,17 @@ def _build_model_list():
     for keyword in PREFERRED_MODEL_KEYWORDS:
         for full_name in supported:
             if full_name == 'models/' + keyword and full_name not in seen:
-                ordered.append(full_name)
+                ordered.append(full_name.replace('models/', ''))
                 seen.add(full_name)
     # Second pass: add any remaining models we haven't added yet
     for full_name in supported:
         if full_name not in seen:
-            ordered.append(full_name)
+            ordered.append(full_name.replace('models/', ''))
             seen.add(full_name)
 
     if not ordered:
         # Absolute last resort
-        ordered = ['models/gemini-2.0-flash-lite']
+        ordered = ['gemini-2.0-flash-lite']
 
     print("Model fallback order:", ordered)
     return ordered

@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: skillsiftai
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: |
+      cd backend && npm install && npm run build
+      pip install -r requirements.txt
+    startCommand: gunicorn backend.app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
+      - key: FLASK_ENV
+        value: production
+      - key: GEMINI_API_KEY
+        sync: false
+    healthCheckPath: /healthz
+    autoDeploy: true

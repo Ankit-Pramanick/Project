@@ -20,9 +20,6 @@ app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB upload cap
 app.config['MAX_FORM_MEMORY_SIZE'] = 1 * 1024 * 1024
 
 # --- Anonymous daily usage quota (free tier) ---
-# Public users get a small number of free generations per day. A client-side
-# anonymous ID (X-Anon-Key header) is used so one visitor can't exhaust the
-# Gemini quota; the counter resets daily.
 MAX_FREE_DAILY_RUNS = 5
 _usage = {}  # anon_key -> {'date': 'YYYY-MM-DD', 'count': int}
 
@@ -54,9 +51,6 @@ def _question_count_from_request():
     return max(5, min(20, count))
 
 # --- Simple in-memory rate limiter for the Gemini-backed endpoints ---
-# Each request triggers up to 2 paid API calls, so unthrottled endpoints
-# could exhaust the free-tier Gemini quota in seconds. Keep the public
-# demo usable by spacing out requests per IP.
 RATE_LIMIT_SECONDS = {
     '/upload_resume': 30,
     '/sample_demo': 60,
@@ -76,103 +70,69 @@ def rate_limited(seconds):
         return wrapper
     return decorator
 
-# Set up Gemini API via Environment Variable with default fallback
+# Set up Gemini API via Environment Variable
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# --- Model fallback list (ordered by preference) ---
-# We build a ranked list of available models at startup.
-# When generating content, we try each model in order,
-# automatically skipping models whose quota is exhausted.
-
-PREFERRED_MODEL_KEYWORDS = [
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-flash-latest',
-    'gemini-2.5-flash-lite',
-    'gemini-2.0-flash-lite',
-    'gemini-2.5-pro',
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-pro',
-    'gemini-1.5-pro-latest',
+# --- Text-generation models only ---
+# The previous implementation dynamically added every model returned by
+# list_models(). That included TTS, image, robotics and other models that are
+# not valid text fallbacks, causing repeated 400/404/quota errors.
+# Gemma 4 26B is explicitly supported for text generation by the Gemini API
+# and was also confirmed working in the Render logs for this application.
+MODEL_LIST = [
+    'gemma-4-26b-a4b-it',
+    'gemma-4-31b-it',
 ]
 
-def _build_model_list():
-    """Return a list of model name strings, ordered by preference."""
-    try:
-        all_models = genai.list_models()
-        supported = [
-            m.name for m in all_models
-            if 'generateContent' in getattr(m, 'supported_generation_methods', [])
-        ]
-        print("Available generateContent models:", supported)
-    except Exception as e:
-        print(f"Error listing models: {e}")
-        supported = []
+class GeminiQuotaError(Exception):
+    pass
 
-    ordered = []
-    seen = set()
-    # First pass: add models that match our preference keywords, in order.
-    # Exact model-name matching only: 'gemini-2.5-flash' must not match
-    # 'gemini-2.5-flash-lite', '-image', or '-preview-tts' variants.
-    for keyword in PREFERRED_MODEL_KEYWORDS:
-        for full_name in supported:
-            if full_name == 'models/' + keyword and full_name not in seen:
-                ordered.append(full_name.replace('models/', ''))
-                seen.add(full_name)
-    # Second pass: add any remaining models we haven't added yet
-    for full_name in supported:
-        if full_name not in seen:
-            ordered.append(full_name.replace('models/', ''))
-            seen.add(full_name)
-
-    if not ordered:
-        # Absolute last resort
-        ordered = ['gemini-2.0-flash-lite']
-
-    print("Model fallback order:", ordered)
-    return ordered
-
-MODEL_LIST = _build_model_list()
-
-def _try_model_names(model_name):
-    """Try both full and short model name formats."""
-    candidates = [model_name]
-    if model_name.startswith('models/'):
-        candidates.append(model_name.replace('models/', ''))
-    else:
-        candidates.append('models/' + model_name)
-    return candidates
+class GeminiGenerationError(Exception):
+    pass
 
 def generate_with_fallback(prompt, max_retries=1):
-    """Try to generate content, falling back across models on quota/404 errors.
-    No blocking sleeps - immediately try next model on any error."""
+    """Generate text using only compatible text-generation models."""
     last_error = None
+
     for model_name in MODEL_LIST:
         for attempt in range(max_retries):
-            for candidate_name in _try_model_names(model_name):
-                try:
-                    model = genai.GenerativeModel(candidate_name)
-                    response = model.generate_content(prompt)
-                    print(f"Success with model: {candidate_name}")
-                    return response
-                except Exception as e:
-                    last_error = e
-                    err_str = str(e)
-                    if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str or 'quota' in err_str.lower():
-                        print(f"Quota exhausted for {candidate_name}, trying next model...")
-                    elif '404' in err_str or 'not found' in err_str.lower():
-                        print(f"Model {candidate_name} not found, trying next...")
-                    else:
-                        print(f"Error with {candidate_name}: {e}")
-                    break  # Try next model candidate
-            # Small delay only if we have retries left, but don't block worker
-            if attempt < max_retries - 1:
-                pass  # No sleep - move immediately to next model
+            try:
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(
+                    prompt,
+                    request_options={'timeout': 90}
+                )
+                print(f"Success with model: {model_name}")
+                return response
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                lowered = err_str.lower()
 
-    raise Exception(f"All models exhausted. Last error: {last_error}")
+                if '429' in err_str or 'resource_exhausted' in lowered or 'quota' in lowered:
+                    print(f"Quota exhausted for {model_name}, trying next model...")
+                    break
+
+                if '404' in err_str or 'not found' in lowered:
+                    print(f"Model {model_name} not found, trying next...")
+                    break
+
+                print(f"Error with {model_name}: {e}")
+                break
+
+    if last_error is not None:
+        err_str = str(last_error)
+        lowered = err_str.lower()
+        if '429' in err_str or 'resource_exhausted' in lowered or 'quota' in lowered:
+            raise GeminiQuotaError(
+                "Gemini API quota is temporarily exhausted. Please try again later."
+            ) from last_error
+
+    raise GeminiGenerationError(
+        f"Gemini text generation failed. Last error: {last_error}"
+    ) from last_error
 
 def detect_file_type(filename, data):
     """Validate a file by extension AND magic bytes. Returns 'pdf'|'docx'|None."""
@@ -212,12 +172,12 @@ def extract_skills_from_text(text):
     Resume text:
     {text}
     """
-    
+
+    response = None
     try:
         response = generate_with_fallback(prompt)
         skills_text = response.text.strip()
-        
-        # Preferred path: parse a JSON array directly
+
         try:
             cleaned = skills_text
             if cleaned.startswith("```json"):
@@ -235,13 +195,11 @@ def extract_skills_from_text(text):
                         return skills
         except Exception:
             pass
-        
-        # Fallback: line-based parsing
+
         skills = []
         for line in skills_text.split('\n'):
             line = line.strip()
             if line and not line.startswith('#') and not line.lower().startswith('skill'):
-                # Remove bullet points or numbering
                 cleaned_line = line
                 if line.startswith('- '):
                     cleaned_line = line[2:]
@@ -249,14 +207,16 @@ def extract_skills_from_text(text):
                     cleaned_line = line[2:]
                 elif len(line) > 2 and line[0].isdigit() and line[1] == '.':
                     cleaned_line = line[2:].strip()
-                
+
                 if cleaned_line:
                     skills.append(cleaned_line)
-        
+
         return skills
+    except (GeminiQuotaError, GeminiGenerationError):
+        raise
     except Exception as e:
         print(f"Error extracting skills: {e}")
-        return ["Error extracting skills"]
+        return []
 
 def generate_mcq_questions(skills, resume_text, question_count=15):
     num_case = 5 if question_count >= 8 else max(1, question_count // 3)
@@ -264,17 +224,17 @@ def generate_mcq_questions(skills, resume_text, question_count=15):
 
     prompt = f"""
     Create {num_mcq} multiple-choice and {num_case} case based questions based on this resume text to test the candidate's knowledge about their listed skills and experience. Give the case based questions also in the mcq format.
-    
+
     Resume text: {resume_text}
-    
+
     Key skills extracted: {', '.join(skills)}
-    
+
     For each question:
     1. Create a technically relevant question about one of the skills
     2. Provide 4 possible answers with one correct answer
     3. Make sure the questions test real technical knowledge, not just resume facts
     4. Make the case based questions real time scenario dependant
-    
+
     Format your response as a valid JSON array with this structure:
     [
         {{
@@ -284,55 +244,63 @@ def generate_mcq_questions(skills, resume_text, question_count=15):
         }},
         ...more questions...
     ]
-    
+
     Return ONLY the JSON with no other text.
     """
-    
+
+    response = None
     try:
         response = generate_with_fallback(prompt)
-        
-        # Extracting JSON from the response
+
         questions_text = response.text.strip()
-        # Remove any markdown code block indicators if present
         if questions_text.startswith("```json"):
             questions_text = questions_text[7:]
         if questions_text.endswith("```"):
             questions_text = questions_text[:-3]
-        
+
         questions_text = questions_text.strip()
         questions = json.loads(questions_text)
-        
-        # Format the response for the frontend and determine correct answer indices
+
+        if not isinstance(questions, list):
+            raise ValueError("Gemini did not return a JSON array of questions.")
+
         formatted_questions = []
         correct_answer_indices = []
-        
+
         for q in questions:
+            options = q["options"]
+            if not isinstance(options, list) or len(options) != 4:
+                raise ValueError("Each question must contain exactly 4 options.")
+
             formatted_questions.append({
                 "question": q["question"],
-                "options": q["options"]
+                "options": options
             })
-            
-            # Find the index of the correct answer
-            correct_opt = q["correct_answer"]
+
+            correct_opt = str(q["correct_answer"]).strip()
             try:
-                # First try to find exact string match
-                correct_index = q["options"].index(correct_opt)
+                correct_index = options.index(q["correct_answer"])
             except ValueError:
-                # If that fails, find the closest matching option
-                for i, option in enumerate(q["options"]):
-                    if correct_opt in option or option in correct_opt:
+                correct_index = None
+                for i, option in enumerate(options):
+                    option_text = str(option).strip()
+                    if correct_opt == option_text or correct_opt in option_text or option_text in correct_opt:
                         correct_index = i
                         break
-                else:
-                    # Default to first option if no match found
-                    correct_index = 0
-                    
+
+                if correct_index is None:
+                    raise ValueError(
+                        f"Correct answer does not match any option: {q['correct_answer']}"
+                    )
+
             correct_answer_indices.append(correct_index)
-        
+
         return formatted_questions, questions, correct_answer_indices
+    except (GeminiQuotaError, GeminiGenerationError):
+        raise
     except Exception as e:
         print(f"Error generating questions: {e}")
-        print(f"Raw response: {response.text if 'response' in locals() else 'No response'}")
+        print(f"Raw response: {response.text if response is not None else 'No response'}")
         return [], [], []
 
 SAMPLE_RESUME_TEXT = """Ankit Pramanick
@@ -377,9 +345,6 @@ def build_assessment(resume_text, question_count=15):
     }
 
 # --- Server-side test store ---
-# Correct answers never ship to the browser. After generating an assessment we
-# keep the answer key in memory keyed by a short-lived test ID; the client only
-# submits its selections and receives the score back.
 _tests = {}
 TEST_TTL_SECONDS = 3600
 
@@ -467,35 +432,42 @@ def upload_resume():
 
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
-    
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
-    
+
     try:
         filename = secure_filename(file.filename)
         file_bytes = file.read()
-        
-        # Validate file type by extension AND content (magic bytes)
+
         file_kind = detect_file_type(filename, file_bytes)
         if not file_kind:
             return jsonify({"error": "Unsupported or invalid file. Please upload a valid PDF or DOCX."}), 400
-        
-        # Extract text based on validated file type
+
         if file_kind == 'pdf':
             resume_text = extract_text_from_pdf(file_bytes)
         else:
             resume_text = extract_text_from_docx(file_bytes)
-        
+
         if not resume_text.strip():
             return jsonify({"error": "Could not extract text from the uploaded file."}), 400
-        
+
         question_count = _question_count_from_request()
         payload = build_assessment(resume_text, question_count)
-        entry['count'] += 1  # consume one run on success
+        entry['count'] += 1
         payload['usage'] = _usage_payload(entry)
         return jsonify(payload)
-    
+
+    except GeminiQuotaError as e:
+        print(f"Gemini quota error: {e}")
+        return jsonify({
+            "error": str(e),
+            "usage": _usage_payload(entry)
+        }), 429
+    except GeminiGenerationError as e:
+        print(f"Gemini generation error: {e}")
+        return jsonify({"error": "AI generation failed. Please try again shortly."}), 502
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -517,9 +489,18 @@ def sample_demo():
     try:
         question_count = _question_count_from_request()
         payload = build_assessment(SAMPLE_RESUME_TEXT, question_count)
-        entry['count'] += 1  # consume one run on success
+        entry['count'] += 1
         payload['usage'] = _usage_payload(entry)
         return jsonify(payload)
+    except GeminiQuotaError as e:
+        print(f"Gemini quota error: {e}")
+        return jsonify({
+            "error": str(e),
+            "usage": _usage_payload(entry)
+        }), 429
+    except GeminiGenerationError as e:
+        print(f"Gemini generation error: {e}")
+        return jsonify({"error": "AI generation failed. Please try again shortly."}), 502
     except ValueError as e:
         print(f"Error generating sample demo: {e}")
         return jsonify({"error": str(e)}), 500

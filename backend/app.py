@@ -76,14 +76,13 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
 # --- Text-generation models only ---
-# The previous implementation dynamically added every model returned by
-# list_models(). That included TTS, image, robotics and other models that are
-# not valid text fallbacks, causing repeated 400/404/quota errors.
-# Gemma 4 26B is explicitly supported for text generation by the Gemini API
-# and was also confirmed working in the Render logs for this application.
+# Prefer fast text models. Keep Gemma as a fallback because it was observed
+# working with this API key in the Render logs.
 MODEL_LIST = [
+    'gemini-3.6-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-flash-lite-latest',
     'gemma-4-26b-a4b-it',
-    'gemma-4-31b-it',
 ]
 
 class GeminiQuotaError(Exception):
@@ -92,35 +91,43 @@ class GeminiQuotaError(Exception):
 class GeminiGenerationError(Exception):
     pass
 
-def generate_with_fallback(prompt, max_retries=1):
-    """Generate text using only compatible text-generation models."""
+
+def generate_with_fallback(prompt, max_output_tokens=1800, timeout_seconds=45):
+    """Generate text using compatible text models with a bounded request time."""
     last_error = None
 
     for model_name in MODEL_LIST:
-        for attempt in range(max_retries):
-            try:
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content(
-                    prompt,
-                    request_options={'timeout': 90}
-                )
-                print(f"Success with model: {model_name}")
-                return response
-            except Exception as e:
-                last_error = e
-                err_str = str(e)
-                lowered = err_str.lower()
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.GenerationConfig(
+                    temperature=0.2,
+                    max_output_tokens=max_output_tokens,
+                ),
+                request_options={'timeout': timeout_seconds},
+            )
+            print(f"Success with model: {model_name}")
+            return response
+        except Exception as e:
+            last_error = e
+            err_str = str(e)
+            lowered = err_str.lower()
 
-                if '429' in err_str or 'resource_exhausted' in lowered or 'quota' in lowered:
-                    print(f"Quota exhausted for {model_name}, trying next model...")
-                    break
+            if '429' in err_str or 'resource_exhausted' in lowered or 'quota' in lowered:
+                print(f"Quota exhausted for {model_name}, trying next model...")
+                continue
 
-                if '404' in err_str or 'not found' in lowered:
-                    print(f"Model {model_name} not found, trying next...")
-                    break
+            if '404' in err_str or 'not found' in lowered:
+                print(f"Model {model_name} not found, trying next model...")
+                continue
 
-                print(f"Error with {model_name}: {e}")
-                break
+            if '504' in err_str or 'deadline exceeded' in lowered or 'timeout' in lowered:
+                print(f"Timeout with {model_name}, trying next model...")
+                continue
+
+            print(f"Error with {model_name}: {e}")
+            continue
 
     if last_error is not None:
         err_str = str(last_error)
@@ -134,6 +141,7 @@ def generate_with_fallback(prompt, max_retries=1):
         f"Gemini text generation failed. Last error: {last_error}"
     ) from last_error
 
+
 def detect_file_type(filename, data):
     """Validate a file by extension AND magic bytes. Returns 'pdf'|'docx'|None."""
     name = (filename or '').lower()
@@ -142,6 +150,7 @@ def detect_file_type(filename, data):
     if name.endswith('.docx') and data[:2] == b'PK':
         return 'docx'
     return None
+
 
 def extract_text_from_pdf(file_bytes):
     text = ""
@@ -153,6 +162,7 @@ def extract_text_from_pdf(file_bytes):
         print(f"Error extracting PDF text: {e}")
     return text
 
+
 def extract_text_from_docx(file_bytes):
     text = ""
     try:
@@ -163,6 +173,7 @@ def extract_text_from_docx(file_bytes):
         print(f"Error extracting DOCX text: {e}")
     return text
 
+
 def extract_skills_from_text(text):
     prompt = f"""
     Extract the key skills, technologies, and qualifications from this resume text.
@@ -170,12 +181,12 @@ def extract_skills_from_text(text):
     Example: ["Python", "Flask", "Docker", "PostgreSQL"]
 
     Resume text:
-    {text}
+    {text[:20000]}
     """
 
     response = None
     try:
-        response = generate_with_fallback(prompt)
+        response = generate_with_fallback(prompt, max_output_tokens=1000, timeout_seconds=30)
         skills_text = response.text.strip()
 
         try:
@@ -218,90 +229,115 @@ def extract_skills_from_text(text):
         print(f"Error extracting skills: {e}")
         return []
 
+
+def _parse_questions_response(response):
+    questions_text = response.text.strip()
+    if questions_text.startswith("```json"):
+        questions_text = questions_text[7:]
+    if questions_text.endswith("```"):
+        questions_text = questions_text[:-3]
+    questions_text = questions_text.strip()
+    questions = json.loads(questions_text)
+
+    if not isinstance(questions, list):
+        raise ValueError("Gemini did not return a JSON array of questions.")
+
+    formatted_questions = []
+    correct_answer_indices = []
+
+    for q in questions:
+        options = q["options"]
+        if not isinstance(options, list) or len(options) != 4:
+            raise ValueError("Each question must contain exactly 4 options.")
+
+        formatted_questions.append({
+            "question": q["question"],
+            "options": options,
+        })
+
+        correct_opt = str(q["correct_answer"]).strip()
+        try:
+            correct_index = options.index(q["correct_answer"])
+        except ValueError:
+            correct_index = None
+            for i, option in enumerate(options):
+                option_text = str(option).strip()
+                if correct_opt == option_text or correct_opt in option_text or option_text in correct_opt:
+                    correct_index = i
+                    break
+
+            if correct_index is None:
+                raise ValueError(
+                    f"Correct answer does not match any option: {q['correct_answer']}"
+                )
+
+        correct_answer_indices.append(correct_index)
+
+    return formatted_questions, questions, correct_answer_indices
+
+
 def generate_mcq_questions(skills, resume_text, question_count=15):
-    num_case = 5 if question_count >= 8 else max(1, question_count // 3)
-    num_mcq = max(1, question_count - num_case)
+    """Generate questions in small batches to avoid 504s on large responses."""
+    all_formatted = []
+    all_full = []
+    all_correct_indices = []
+    remaining = question_count
+    batch_size = 5
+    batch_number = 1
 
-    prompt = f"""
-    Create {num_mcq} multiple-choice and {num_case} case based questions based on this resume text to test the candidate's knowledge about their listed skills and experience. Give the case based questions also in the mcq format.
+    while remaining > 0:
+        current_count = min(batch_size, remaining)
+        num_case = 1 if current_count >= 5 else 0
+        num_mcq = current_count - num_case
 
-    Resume text: {resume_text}
+        prompt = f"""
+        Create exactly {num_mcq} technical multiple-choice questions and {num_case} case-based multiple-choice question.
+        Base the questions on the candidate resume and listed skills below.
 
-    Key skills extracted: {', '.join(skills)}
+        Resume text:
+        {resume_text[:16000]}
 
-    For each question:
-    1. Create a technically relevant question about one of the skills
-    2. Provide 4 possible answers with one correct answer
-    3. Make sure the questions test real technical knowledge, not just resume facts
-    4. Make the case based questions real time scenario dependant
+        Key skills:
+        {', '.join(skills[:30])}
 
-    Format your response as a valid JSON array with this structure:
-    [
-        {{
-            "question": "Question text here?",
+        Requirements:
+        1. Every question must have exactly 4 options.
+        2. Exactly one option must be correct.
+        3. Test real technical knowledge rather than repeating resume facts.
+        4. Case-based questions must describe a realistic engineering situation.
+        5. Return ONLY a JSON array. No markdown or explanation.
+
+        JSON structure:
+        [
+          {{
+            "question": "Question text",
             "options": ["Option A", "Option B", "Option C", "Option D"],
-            "correct_answer": "The correct option"
-        }},
-        ...more questions...
-    ]
+            "correct_answer": "The exact correct option text"
+          }}
+        ]
+        """
 
-    Return ONLY the JSON with no other text.
-    """
+        try:
+            response = generate_with_fallback(
+                prompt,
+                max_output_tokens=2200,
+                timeout_seconds=45,
+            )
+            formatted, full, correct = _parse_questions_response(response)
+            all_formatted.extend(formatted)
+            all_full.extend(full)
+            all_correct_indices.extend(correct)
+            print(f"Question batch {batch_number} generated: {len(formatted)} questions")
+        except (GeminiQuotaError, GeminiGenerationError):
+            raise
+        except Exception as e:
+            print(f"Error generating question batch {batch_number}: {e}")
+            return [], [], []
 
-    response = None
-    try:
-        response = generate_with_fallback(prompt)
+        remaining -= current_count
+        batch_number += 1
 
-        questions_text = response.text.strip()
-        if questions_text.startswith("```json"):
-            questions_text = questions_text[7:]
-        if questions_text.endswith("```"):
-            questions_text = questions_text[:-3]
-
-        questions_text = questions_text.strip()
-        questions = json.loads(questions_text)
-
-        if not isinstance(questions, list):
-            raise ValueError("Gemini did not return a JSON array of questions.")
-
-        formatted_questions = []
-        correct_answer_indices = []
-
-        for q in questions:
-            options = q["options"]
-            if not isinstance(options, list) or len(options) != 4:
-                raise ValueError("Each question must contain exactly 4 options.")
-
-            formatted_questions.append({
-                "question": q["question"],
-                "options": options
-            })
-
-            correct_opt = str(q["correct_answer"]).strip()
-            try:
-                correct_index = options.index(q["correct_answer"])
-            except ValueError:
-                correct_index = None
-                for i, option in enumerate(options):
-                    option_text = str(option).strip()
-                    if correct_opt == option_text or correct_opt in option_text or option_text in correct_opt:
-                        correct_index = i
-                        break
-
-                if correct_index is None:
-                    raise ValueError(
-                        f"Correct answer does not match any option: {q['correct_answer']}"
-                    )
-
-            correct_answer_indices.append(correct_index)
-
-        return formatted_questions, questions, correct_answer_indices
-    except (GeminiQuotaError, GeminiGenerationError):
-        raise
-    except Exception as e:
-        print(f"Error generating questions: {e}")
-        print(f"Raw response: {response.text if response is not None else 'No response'}")
-        return [], [], []
+    return all_formatted, all_full, all_correct_indices
 
 SAMPLE_RESUME_TEXT = """Ankit Pramanick
 Senior Backend Engineer
@@ -326,13 +362,16 @@ EDUCATION
 B.Tech in Computer Science
 """
 
+
 def build_assessment(resume_text, question_count=15):
     """Run the full extraction + generation pipeline and return the response payload."""
     skills = extract_skills_from_text(resume_text)
     if not skills:
         raise ValueError("Could not extract skills from the resume.")
 
-    formatted_questions, full_questions, correct_indices = generate_mcq_questions(skills, resume_text, question_count)
+    formatted_questions, full_questions, correct_indices = generate_mcq_questions(
+        skills, resume_text, question_count
+    )
     if not formatted_questions:
         raise ValueError("Could not generate questions from the resume.")
 

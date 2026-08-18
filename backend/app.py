@@ -104,6 +104,7 @@ def generate_with_fallback(prompt, max_output_tokens=1800, timeout_seconds=45):
                 generation_config=genai.GenerationConfig(
                     temperature=0.2,
                     max_output_tokens=max_output_tokens,
+                    response_mime_type="application/json",
                 ),
                 request_options={'timeout': timeout_seconds},
             )
@@ -277,17 +278,17 @@ def _parse_questions_response(response):
 
 
 def generate_mcq_questions(skills, resume_text, question_count=15):
-    """Generate questions in small batches to avoid 504s on large responses."""
+    """Generate questions in small batches to avoid long or truncated responses."""
     all_formatted = []
     all_full = []
     all_correct_indices = []
     remaining = question_count
-    batch_size = 5
+    batch_size = 3
     batch_number = 1
 
     while remaining > 0:
         current_count = min(batch_size, remaining)
-        num_case = 1 if current_count >= 5 else 0
+        num_case = 1 if current_count >= 3 else 0
         num_mcq = current_count - num_case
 
         prompt = f"""
@@ -295,17 +296,18 @@ def generate_mcq_questions(skills, resume_text, question_count=15):
         Base the questions on the candidate resume and listed skills below.
 
         Resume text:
-        {resume_text[:16000]}
+        {resume_text[:12000]}
 
         Key skills:
-        {', '.join(skills[:30])}
+        {', '.join(skills[:25])}
 
         Requirements:
         1. Every question must have exactly 4 options.
         2. Exactly one option must be correct.
         3. Test real technical knowledge rather than repeating resume facts.
         4. Case-based questions must describe a realistic engineering situation.
-        5. Return ONLY a JSON array. No markdown or explanation.
+        5. Keep each question and each option concise.
+        6. Return ONLY a JSON array. No markdown or explanation.
 
         JSON structure:
         [
@@ -320,10 +322,14 @@ def generate_mcq_questions(skills, resume_text, question_count=15):
         try:
             response = generate_with_fallback(
                 prompt,
-                max_output_tokens=2200,
-                timeout_seconds=45,
+                max_output_tokens=1200,
+                timeout_seconds=35,
             )
             formatted, full, correct = _parse_questions_response(response)
+            if len(formatted) != current_count:
+                raise ValueError(
+                    f"Expected {current_count} questions but received {len(formatted)}."
+                )
             all_formatted.extend(formatted)
             all_full.extend(full)
             all_correct_indices.extend(correct)
@@ -362,16 +368,13 @@ EDUCATION
 B.Tech in Computer Science
 """
 
-
 def build_assessment(resume_text, question_count=15):
     """Run the full extraction + generation pipeline and return the response payload."""
     skills = extract_skills_from_text(resume_text)
     if not skills:
         raise ValueError("Could not extract skills from the resume.")
 
-    formatted_questions, full_questions, correct_indices = generate_mcq_questions(
-        skills, resume_text, question_count
-    )
+    formatted_questions, full_questions, correct_indices = generate_mcq_questions(skills, resume_text, question_count)
     if not formatted_questions:
         raise ValueError("Could not generate questions from the resume.")
 

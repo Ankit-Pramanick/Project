@@ -7,7 +7,7 @@ services:
     buildCommand: |
       cd backend && npm install && npm run build
       pip install -r requirements.txt
-    startCommand: startCommand: gunicorn --timeout 120 --workers 1 backend.app:app
+    startCommand: gunicorn --timeout 120 --workers 1 backend.app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11

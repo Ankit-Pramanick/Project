@@ -51,16 +51,21 @@ def _parse_questions(response):
     return formatted, full, correct_indices
 
 
-def _generate_batch(skills, resume_text, count, case_count, timeout=30):
-    mcq_count = count - case_count
+def generate_mcq_questions(skills, resume_text, question_count=15):
+    """Generate the entire assessment in one compact plain-text request."""
+    case_count = 5 if question_count >= 8 else max(1, question_count // 3)
+    mcq_count = question_count - case_count
+
     prompt = f"""
-Generate exactly {count} technical multiple-choice questions.
-Use the candidate's skills and resume only as context and test real technical knowledge.
-{mcq_count} should be normal technical questions and {case_count} should be realistic case-based questions.
-Keep each question under 20 words and every option under 10 words.
+Generate exactly {question_count} technical multiple-choice questions.
+Generate {mcq_count} normal technical questions and {case_count} realistic case-based questions.
+Use the candidate's skills and resume only as context; test real technical knowledge.
 
-Return the questions ONLY in this exact plain-text format. Do not use JSON, markdown, bullets, or extra commentary.
+Keep every question under 18 words.
+Keep every answer option under 8 words.
+Use exactly four options per question and exactly one correct answer.
 
+Return ONLY the following six-line format for each question. No JSON, no markdown, no bullets, no commentary:
 QUESTION: question text
 A: option text
 B: option text
@@ -68,88 +73,29 @@ C: option text
 D: option text
 ANSWER: A
 
-Repeat that exact six-line block for each question.
+Repeat the six-line block exactly {question_count} times.
 
 Skills: {', '.join(skills[:20])}
-Resume context: {resume_text[:5000]}
+Resume context: {resume_text[:6000]}
 """
 
     response = app_module.generate_with_fallback(
         prompt,
-        max_output_tokens=max(450, count * 350),
-        timeout_seconds=timeout,
+        max_output_tokens=max(1800, question_count * 140),
+        timeout_seconds=75,
     )
-    return _parse_questions(response)
 
+    formatted, full, correct = _parse_questions(response)
+    if len(formatted) != question_count:
+        raise ValueError(
+            f"Expected {question_count} questions but received {len(formatted)}."
+        )
 
-def resilient_generate_mcq_questions(skills, resume_text, question_count=15):
-    """Generate compact plain-text batches and retry incomplete batches safely."""
-    formatted_all = []
-    full_all = []
-    correct_all = []
-    remaining = question_count
-    batch_number = 1
-
-    while remaining > 0:
-        count = min(2, remaining)
-        case_count = 1 if batch_number % 3 == 0 and count == 2 else 0
-
-        try:
-            formatted, full, correct = _generate_batch(
-                skills, resume_text, count, case_count
-            )
-        except (app_module.GeminiQuotaError, app_module.GeminiGenerationError):
-            raise
-        except Exception as first_error:
-            print(
-                f"Question batch {batch_number} failed: {first_error}; "
-                "retrying with one question."
-            )
-            try:
-                formatted, full, correct = _generate_batch(
-                    skills,
-                    resume_text,
-                    1,
-                    1 if case_count else 0,
-                    timeout=25,
-                )
-                count = 1
-            except Exception as retry_error:
-                print(f"Question batch {batch_number} retry failed: {retry_error}")
-                raise ValueError("Could not generate a valid question batch.") from retry_error
-
-        if len(formatted) < count:
-            print(
-                f"Question batch {batch_number} returned {len(formatted)}/{count}; "
-                "using a one-question retry for the missing questions."
-            )
-            missing = count - len(formatted)
-            for _ in range(missing):
-                try:
-                    extra_formatted, extra_full, extra_correct = _generate_batch(
-                        skills, resume_text, 1, 0, timeout=25
-                    )
-                    formatted.extend(extra_formatted)
-                    full.extend(extra_full)
-                    correct.extend(extra_correct)
-                except Exception as retry_error:
-                    raise ValueError("Could not complete the question batch.") from retry_error
-
-        if len(formatted) != count:
-            raise ValueError(
-                f"Expected {count} questions but received {len(formatted)}."
-            )
-
-        formatted_all.extend(formatted)
-        full_all.extend(full)
-        correct_all.extend(correct)
-        remaining -= count
-        batch_number += 1
-
-    return formatted_all, full_all, correct_all
+    print(f"Generated {len(formatted)} questions in one request")
+    return formatted, full, correct
 
 
 # build_assessment() resolves generate_mcq_questions from app_module's globals
 # at request time, so replacing that function here keeps the rest of the app intact.
-app_module.generate_mcq_questions = resilient_generate_mcq_questions
+app_module.generate_mcq_questions = generate_mcq_questions
 app = app_module.app

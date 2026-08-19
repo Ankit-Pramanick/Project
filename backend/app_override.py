@@ -1,10 +1,11 @@
 import re
+import google.generativeai as genai
 
 from . import app as app_module
 
 
-def _parse_questions(response):
-    text = (response.text or "").strip()
+def _parse_questions(text):
+    text = (text or "").strip()
     text = text.replace("```text", "").replace("```", "").strip()
 
     pattern = re.compile(
@@ -35,7 +36,7 @@ def _parse_questions(response):
 
         correct_index = ord(answer) - ord("A")
         if not 0 <= correct_index < 4:
-            raise ValueError("Invalid correct-answer label.")
+            continue
 
         formatted.append({"question": question, "options": options})
         full.append({
@@ -49,6 +50,39 @@ def _parse_questions(response):
         raise ValueError("Gemini returned no usable questions.")
 
     return formatted, full, correct_indices
+
+
+def _generate_plain_text(prompt, max_output_tokens, timeout_seconds):
+    """Call Gemini directly without forcing JSON response mode."""
+    last_error = None
+    model_names = [
+        'gemini-3.6-flash',
+        'gemini-3.1-flash-lite',
+        'gemini-flash-lite-latest',
+        'gemma-4-26b-a4b-it',
+    ]
+
+    for model_name in model_names:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.GenerationConfig(
+                    temperature=0.2,
+                    max_output_tokens=max_output_tokens,
+                ),
+                request_options={'timeout': timeout_seconds},
+            )
+            print(f"Success with plain-text model: {model_name}")
+            return response.text
+        except Exception as e:
+            last_error = e
+            print(f"Plain-text generation error with {model_name}: {e}")
+            continue
+
+    raise app_module.GeminiGenerationError(
+        f"Plain-text Gemini generation failed: {last_error}"
+    ) from last_error
 
 
 def generate_mcq_questions(skills, resume_text, question_count=15):
@@ -79,19 +113,19 @@ Skills: {', '.join(skills[:20])}
 Resume context: {resume_text[:6000]}
 """
 
-    response = app_module.generate_with_fallback(
+    questions_text = _generate_plain_text(
         prompt,
         max_output_tokens=max(1800, question_count * 140),
         timeout_seconds=75,
     )
 
-    formatted, full, correct = _parse_questions(response)
+    formatted, full, correct = _parse_questions(questions_text)
     if len(formatted) != question_count:
         raise ValueError(
-            f"Expected {question_count} questions but received {len(formatted)}."
+            f"Expected {question_count} questions but received {len(formatted)}"
         )
 
-    print(f"Generated {len(formatted)} questions in one request")
+    print(f"Generated {len(formatted)} questions in one plain-text request")
     return formatted, full, correct
 
 

@@ -76,11 +76,11 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
 # --- Text-generation models only ---
-# Prefer fast text models. Keep Gemma as a fallback because it was observed
-# working with this API key in the Render logs.
+# Prefer ultra-fast text models with reliable json output.
 MODEL_LIST = [
-    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
+    'gemini-3.6-flash',
     'gemini-flash-lite-latest',
     'gemma-4-26b-a4b-it',
 ]

@@ -293,23 +293,39 @@
 
     <!-- ===== PROCTORING WARNING MODAL ===== -->
     <div id="warningModal" class="fixed inset-0 z-50 hidden">
-        <div class="absolute inset-0 bg-black/60 dark:bg-black/70 modal-backdrop"></div>
-        <div class="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 max-w-md w-full mx-4 mt-[12vh] mx-auto p-5 rounded-xl modal-panel">
+        <div class="absolute inset-0 bg-black/60 dark:bg-black/70 modal-backdrop" onclick="closeWarningModal()"></div>
+        <div class="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 max-w-md w-full mx-4 mt-[12vh] mx-auto p-5 rounded-xl modal-panel shadow-2xl">
             <div class="flex items-center justify-between mb-4 border-b border-zinc-200 dark:border-zinc-800 pb-3">
-                <h2 class="font-mono text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">Focus warning</h2>
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex h-2 w-2 rounded-full bg-amber-500 animate-ping"></span>
+                    <h2 class="font-mono text-sm font-semibold tracking-tight text-amber-600 dark:text-amber-400">Proctoring Warning</h2>
+                </div>
+                <button onclick="closeWarningModal()" class="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 transition-colors">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
             </div>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed"><span id="warningMessage"></span> Leaving the tab <span id="warningCount"></span> time(s) may flag your session.</p>
+            <p class="text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed mb-2"><span id="warningMessage"></span></p>
+            <p class="text-xs text-amber-600 dark:text-amber-400 font-medium">Warning <span id="warningCount">0</span> of 3. (3 warnings will automatically cancel your test session).</p>
+            <div class="mt-4 flex justify-end">
+                <button onclick="closeWarningModal()" class="px-4 py-1.5 text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg hover:opacity-90 transition-opacity">I Understand</button>
+            </div>
         </div>
     </div>
 
     <!-- ===== CANCELLED MODAL ===== -->
     <div id="canceledModal" class="fixed inset-0 z-50 hidden">
         <div class="absolute inset-0 bg-black/60 dark:bg-black/70 modal-backdrop"></div>
-        <div class="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 max-w-md w-full mx-4 mt-[12vh] mx-auto p-5 rounded-xl modal-panel">
+        <div class="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 max-w-md w-full mx-4 mt-[12vh] mx-auto p-5 rounded-xl modal-panel shadow-2xl">
             <div class="flex items-center justify-between mb-4 border-b border-zinc-200 dark:border-zinc-800 pb-3">
-                <h2 class="font-mono text-sm font-semibold tracking-tight text-danger-600">Test cancelled</h2>
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex h-2 w-2 rounded-full bg-red-500"></span>
+                    <h2 class="font-mono text-sm font-semibold tracking-tight text-red-600 dark:text-red-400">Test Cancelled</h2>
+                </div>
             </div>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">This run was cancelled. Click Generate to start a new assessment.</p>
+            <p class="text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed mb-4">This assessment was automatically cancelled due to exceeding proctoring violation limits (3 focus or clipboard infractions).</p>
+            <div class="flex justify-end">
+                <button onclick="resetTest()" class="px-4 py-2 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">Start New Assessment</button>
+            </div>
         </div>
     </div>
 
@@ -665,18 +681,67 @@
             document.getElementById('test').innerHTML = th;
             document.getElementById('submit-section').classList.remove('hidden');
             timeRemaining = 600;
-            testInProgress = true;
+            setupSecurityMeasures();
             startTimer();
             document.getElementById('outputPanel').scrollIntoView({ behavior:'smooth', block:'start' });
         }
 
         /* security — proctoring mode (enforced) */
-        function preventDefaultAction(e) { if (testInProgress) { e.preventDefault(); showWarning("This action is restricted during the assessment."); } }
-        function windowBlurred() { if (testInProgress) { hasFocus = false; document.title = "RETURN TO TEST"; showWarning("Tab switch detected — focusing away is not allowed."); } }
-        function windowFocused() { if (testInProgress) { hasFocus = true; document.title = originalTitle; } }
-        function visibilityChanged() { if (testInProgress && document.visibilityState === 'hidden') showWarning("Tab switch detected — focusing away is not allowed."); }
-        function checkVisibilityState() { if (testInProgress && !hasFocus) document.title = "RETURN TO TEST"; }
-        function preventKeyboardShortcuts(e) { if (testInProgress && ((e.ctrlKey||e.metaKey) && 'cvpas'.indexOf(e.key)>=0)) { e.preventDefault(); showWarning("Keyboard shortcuts are blocked during the assessment."); } }
+        function setupSecurityMeasures() {
+            testInProgress = true;
+            warningCount = 0;
+            hasFocus = true;
+            document.addEventListener('contextmenu', preventDefaultAction);
+            document.addEventListener('copy', preventDefaultAction);
+            document.addEventListener('cut', preventDefaultAction);
+            document.addEventListener('keydown', preventKeyboardShortcuts);
+            window.addEventListener('blur', windowBlurred);
+            window.addEventListener('focus', windowFocused);
+            document.addEventListener('visibilitychange', visibilityChanged);
+            if (visibilityInterval) clearInterval(visibilityInterval);
+            visibilityInterval = setInterval(checkVisibilityState, 500);
+        }
+
+        function preventDefaultAction(e) { 
+            if (testInProgress) { 
+                e.preventDefault(); 
+                showWarning("Copying, cutting, or right-clicking is restricted during the assessment."); 
+            } 
+        }
+
+        function windowBlurred() { 
+            if (testInProgress) { 
+                hasFocus = false; 
+                document.title = "⚠️ RETURN TO TEST"; 
+                showWarning("Tab switch detected — navigating away or losing window focus is not allowed."); 
+            } 
+        }
+
+        function windowFocused() { 
+            if (testInProgress) { 
+                hasFocus = true; 
+                document.title = originalTitle; 
+            } 
+        }
+
+        function visibilityChanged() { 
+            if (testInProgress && document.visibilityState === 'hidden') {
+                showWarning("Tab switch detected — navigating away or minimizing is not allowed."); 
+            }
+        }
+
+        function checkVisibilityState() { 
+            if (testInProgress && !hasFocus) {
+                document.title = "⚠️ RETURN TO TEST"; 
+            }
+        }
+
+        function preventKeyboardShortcuts(e) { 
+            if (testInProgress && ((e.ctrlKey || e.metaKey) && 'cvpasx'.indexOf(e.key.toLowerCase()) >= 0)) { 
+                e.preventDefault(); 
+                showWarning("Keyboard shortcut (" + (e.ctrlKey ? "Ctrl" : "Cmd") + "+" + e.key.toUpperCase() + ") is blocked during the assessment."); 
+            } 
+        }
 
         function showWarning(msg) {
             if (!testInProgress) return;
@@ -684,25 +749,43 @@
             document.getElementById('warningMessage').textContent = msg;
             document.getElementById('warningCount').textContent = warningCount;
             document.getElementById('warningModal').classList.remove('hidden');
-            if (warningCount >= 3) cancelTest();
+            if (warningCount >= 3) {
+                cancelTest();
+            }
         }
-        function closeWarningModal() { document.getElementById('warningModal').classList.add('hidden'); }
-        function cancelTest() { closeWarningModal(); document.getElementById('canceledModal').classList.remove('hidden'); removeSecurityMeasures(); stopTimer(); }
+
+        function closeWarningModal() { 
+            document.getElementById('warningModal').classList.add('hidden'); 
+        }
+
+        function cancelTest() { 
+            closeWarningModal(); 
+            document.getElementById('canceledModal').classList.remove('hidden'); 
+            removeSecurityMeasures(); 
+            stopTimer(); 
+        }
+
         function removeSecurityMeasures() {
             testInProgress = false;
             document.removeEventListener('contextmenu', preventDefaultAction);
             document.removeEventListener('copy', preventDefaultAction);
             document.removeEventListener('cut', preventDefaultAction);
+            document.removeEventListener('keydown', preventKeyboardShortcuts);
             window.removeEventListener('blur', windowBlurred);
             window.removeEventListener('focus', windowFocused);
             document.removeEventListener('visibilitychange', visibilityChanged);
-            clearInterval(visibilityInterval);
+            if (visibilityInterval) clearInterval(visibilityInterval);
             document.title = originalTitle;
         }
+
         function resetTest() {
             document.getElementById('canceledModal').classList.add('hidden');
-            clearOutput(); currentTestId = null; correctAnswers = []; warningCount = 0;
-            resetFileUpload(); resetTimer();
+            clearOutput(); 
+            currentTestId = null; 
+            correctAnswers = []; 
+            warningCount = 0;
+            resetFileUpload(); 
+            resetTimer();
         }
 
         /* SUBMIT (server-side scoring) with enhanced results */
